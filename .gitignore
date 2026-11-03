@@ -1,0 +1,36 @@
+# Competition data stays outside the repository (organizer licence: team use only)
+/data/
+*.zip
+
+# Models and training artefacts
+models/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.onnx
+
+# Run outputs
+outputs/
+submissions/
+logs/
+*.log
+wandb/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
