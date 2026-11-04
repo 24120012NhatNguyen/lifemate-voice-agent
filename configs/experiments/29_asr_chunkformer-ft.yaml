@@ -1,0 +1,4 @@
+# ChunkFormer fine-tune trên audio train_rest (scripts/finetune_chunkformer.py). So với 23. CC BY-NC 4.0: hỏi BTC trước khi nộp.
+extends: ../base.yaml
+asr: {name: chunkformer, model: models/chunkformer-ctc-large-vie-ft}
+agent: {name: none}

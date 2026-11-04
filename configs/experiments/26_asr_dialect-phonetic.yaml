@@ -1,0 +1,4 @@
+# Ô nghiên cứu arXiv 2605.24451: chưa có mã nên chạy sẽ báo NotImplementedError. Để trong checklist.
+extends: ../base.yaml
+asr: {name: dialect_phonetic}
+agent: {name: none}

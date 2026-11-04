@@ -1,0 +1,3 @@
+# Nấc 1: Qwen3-4B chỉ dùng prompt, nghe hoàn hảo (audio_text gold), ReAct JSON, luật đã kiểm trên dữ liệu.
+extends: ../base.yaml
+subset: val_random

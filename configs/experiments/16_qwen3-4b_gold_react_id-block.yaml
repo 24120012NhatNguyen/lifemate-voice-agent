@@ -1,0 +1,3 @@
+# Middleware: chặn hẳn call dùng ID chưa thấy (nguồn: lượt này, lịch sử, lời nói). Oracle với cấu hình này vẫn 99,86.
+extends: ../base.yaml
+guards: {id_guard: block}

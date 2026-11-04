@@ -1,0 +1,40 @@
+# Config gốc: mọi thí nghiệm `extends` file này rồi chỉ ghi phần khác.
+# Mỗi khối là một tầng của pipeline; `name` chọn phương án (xem `lifemate list`).
+split: train            # train | public_test
+subset: val_random      # all | val_random | val_app | train_rest | ids:train_0001,train_0002
+limit: null             # lấy N mẫu ngẫu nhiên (seed cố định) trong subset
+repeats: 1              # >1 để đo độ ổn định: chạy lại cùng config, so call giữa các lần
+workers: 8              # số mẫu chạy song song (đặt 1 khi đo thời gian mỗi mẫu)
+
+asr:                    # Tầng A
+  name: gold            # gold | hf_whisper | faster_whisper | chunkformer | dialect_phonetic
+  history: true         # chép cả các lượt user trong lịch sử
+  hint: none            # none | profile | profile_history: mồi tên riêng cho Whisper
+
+asr_post: []            # hậu xử lý: [{name: strip_fillers}, {name: phonetic_entity_fix}]
+
+agent:                  # Tầng B + C
+  name: react_json      # none | empty | oracle | react_json | native_tools
+  llm:
+    base_url: http://localhost:8000/v1
+    model: Qwen/Qwen3-4B-Instruct-2507
+    temperature: 0.0
+    max_tokens: 400
+    seed: 0
+  prompt: prompts/react_json.md
+  rules: prompts/rules/verified.md
+  timetable: two_weeks  # none | three_days | two_weeks
+  schema: compact       # compact | json
+  history: full         # full | brief
+  ledger: true
+  max_steps: 8
+  json_mode: schema     # off | object | schema (react_json: ép action và tên tool bằng JSON Schema)
+
+guards:                 # Tầng D (xem src/lifemate/guards.py)
+  validate: true
+  normalize: true
+  calendar_duration: true
+  id_guard: warn        # off | warn | block
+  id_sources: [turn, history, utterance]
+  id_harvest: all       # html | all
+  dup_guard: warn       # off | warn | block

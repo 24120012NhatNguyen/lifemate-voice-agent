@@ -1,0 +1,9 @@
+# Middleware đúng như SafeToolEnvWrapper trong lifemate_optimal_pipeline.html: chặn ID chỉ dựa trên call đọc của lượt này.
+extends: ../base.yaml
+subset: all
+agent: {name: oracle}
+guards:
+  id_guard: block
+  id_sources: [turn]
+  id_harvest: html
+  dup_guard: block

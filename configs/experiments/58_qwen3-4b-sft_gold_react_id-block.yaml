@@ -1,0 +1,6 @@
+# Như 40 với guard của 16 (chặn hẳn ID chưa thấy). 16 thêm 2,9 điểm cho mô hình gốc; guards phụ thuộc LLM nên đo lại với SFT.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft}
+guards: {id_guard: block}

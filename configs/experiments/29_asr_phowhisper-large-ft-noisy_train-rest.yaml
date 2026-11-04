@@ -1,0 +1,7 @@
+# PhoWhisper-large fine-tune trên audio train_rest thêm nhiễu trắng (src/lifemate/asr/augment.py): bản chép có lỗi gần
+# mức audio chưa nghe mà giữ kiểu chữ của mô hình, cho `build_sft.py --asr-config`. Thử limit=100: WER 4,7 ở 10 dB,
+# 8,4 ở 5 dB, 11,8 ở 2 dB (không nhiễu 2,0; val_random 9,3, val_app 11,6), nên chọn 2 dB.
+extends: ../base.yaml
+subset: train_rest
+asr: {name: hf_whisper_noisy, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16, snr_db: 2}
+agent: {name: none}

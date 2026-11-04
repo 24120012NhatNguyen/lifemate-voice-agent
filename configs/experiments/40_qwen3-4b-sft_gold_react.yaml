@@ -1,0 +1,6 @@
+# Nấc 3: như 10 nhưng Qwen3-4B đã LoRA SFT trên quỹ đạo gold của train_rest (scripts/build_sft.py, scripts/train_sft.py).
+# Server chạy ở gốc repo: `DETERMINISTIC=1 MODEL=models/qwen3-4b-sft scripts/serve_vllm.sh`.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft}

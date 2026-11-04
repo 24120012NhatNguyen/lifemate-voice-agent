@@ -1,0 +1,5 @@
+# Như 90 với agent SFT trên cả 1.545 mẫu train (kaggle/run_sft.py full, gộp bằng scripts/merge_lora.py).
+# Không có điểm val để so: công thức đã chọn trên train_rest, bảng xếp hạng public là phép đo duy nhất.
+extends: 90_submit_public.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-full}

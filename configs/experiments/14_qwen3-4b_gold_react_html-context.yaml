@@ -1,0 +1,6 @@
+# Ablation: ngữ cảnh như HTML (bảng lịch 3 ngày, schema JSON thô, không sổ ghi lịch sử).
+extends: ../base.yaml
+agent:
+  timetable: three_days
+  schema: json
+  ledger: false

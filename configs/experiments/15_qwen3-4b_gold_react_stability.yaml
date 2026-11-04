@@ -1,0 +1,4 @@
+# Độ ổn định: chạy lại 3 lần cùng config, đo tỉ lệ mẫu ra cùng call và cùng hash.
+extends: ../base.yaml
+limit: 30
+repeats: 3

@@ -1,0 +1,6 @@
+# Như 70 trên val_app; so với 41.
+extends: ../base.yaml
+subset: val_app
+agent:
+  calc: true
+  llm: {model: models/qwen3-4b-sft-calc}

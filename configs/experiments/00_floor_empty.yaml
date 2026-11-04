@@ -1,0 +1,4 @@
+# Điểm sàn: không gọi tool nào.
+extends: ../base.yaml
+subset: all
+agent: {name: empty}

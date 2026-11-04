@@ -1,0 +1,4 @@
+# Trần: phát lại gold qua middleware mặc định. Phải ra 100 nếu middleware không làm hại.
+extends: ../base.yaml
+subset: all
+agent: {name: oracle}

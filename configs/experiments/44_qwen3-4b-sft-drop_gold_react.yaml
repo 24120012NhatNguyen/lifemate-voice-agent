@@ -1,0 +1,6 @@
+# Như 40 nhưng gỡ app giữ lại khỏi installed_apps của dữ liệu SFT (build_sft.py --drop-heldout): val_app đo đúng app chưa thấy.
+# Huấn luyện trên Kaggle (kaggle/run_sft.py drop), gộp: `scripts/merge_lora.py models/qwen3-4b-sft-drop-lora models/qwen3-4b-sft-drop`.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-drop}

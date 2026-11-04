@@ -1,0 +1,6 @@
+# Như 50 trên val_app.
+# Huấn luyện trên Kaggle (kaggle/run_sft.py drop-half), gộp: `scripts/merge_lora.py models/qwen3-4b-sft-drop-half-lora models/qwen3-4b-sft-drop-half`.
+extends: ../base.yaml
+subset: val_app
+agent:
+  llm: {model: models/qwen3-4b-sft-drop-half}

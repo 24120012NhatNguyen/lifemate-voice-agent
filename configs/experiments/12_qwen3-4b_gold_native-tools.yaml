@@ -1,0 +1,5 @@
+# Đổi cách gọi tool: tool calling gốc của Qwen thay cho JSON tự định nghĩa.
+extends: ../base.yaml
+agent:
+  name: native_tools
+  prompt: prompts/native_tools.md

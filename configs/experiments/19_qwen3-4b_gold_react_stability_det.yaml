@@ -1,0 +1,4 @@
+# Như 15 nhưng server chạy `DETERMINISTIC=1 scripts/serve_vllm.sh` (VLLM_BATCH_INVARIANT=1). Cần 100% trước khi nộp Docker.
+extends: ../base.yaml
+limit: 30
+repeats: 3

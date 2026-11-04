@@ -1,0 +1,5 @@
+# Như 42 trên app giữ lại: đổi tên khi SFT có thu hẹp khoảng cách với app chưa thấy không (so với 41).
+extends: ../base.yaml
+subset: val_app
+agent:
+  llm: {model: models/qwen3-4b-sft-rename}

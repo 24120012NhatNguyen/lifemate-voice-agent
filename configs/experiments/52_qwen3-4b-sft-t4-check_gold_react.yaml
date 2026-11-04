@@ -1,0 +1,6 @@
+# Lặp lại 40 bằng fp16 trên T4 của Kaggle, để biết kết quả Kaggle so được với máy nhà.
+# Huấn luyện trên Kaggle (kaggle/run_sft.py t4-check), gộp: `scripts/merge_lora.py models/qwen3-4b-sft-t4-check-lora models/qwen3-4b-sft-t4-check`.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-t4-check}

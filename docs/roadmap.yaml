@@ -1,0 +1,121 @@
+# Lộ trình đề xuất và trạng thái. Tab "Lộ trình" của app/compare.py đọc file này và tự gắn điểm từ runs/.
+# Nấc và ý tưởng lấy từ docs/PROPOSAL.md mục 5 và 6; đề xuất mới rút ra từ kết quả (docs/BASELINE.md).
+# Sửa trực tiếp ở đây, hoặc ở bảng "Đề xuất tiếp theo" trên web-app (nút Lưu ghi lại cả file, chỉ giữ chú thích đầu file).
+# status: xong | đang làm | chưa làm | bỏ. configs: mẫu tên config (glob) có kết quả làm bằng chứng.
+rungs:
+- id: '0'
+  name: Khung đo
+  status: xong
+  gate: Chạy lại call gold của train ra 100 điểm, state khớp final_state ở mọi mẫu
+  configs: ['00_*', '01_*', '02_*']
+  note: Oracle qua middleware mặc định ra 100; middleware kiểu HTML làm mất 4,5 điểm.
+- id: '1'
+  name: Baseline nộp được
+  status: xong
+  gate: File nộp hợp lệ, dưới 30 giây mỗi mẫu, có số đo gốc trên cả hai tập kiểm định
+  configs: ['10_*', '11_*', '12_*', '3[0-3]_*', '90_*']
+  note: Qwen3-4B chỉ dùng prompt được 34,2 trên val_random, 36,1 trên val_app. Bản nộp public đầu tiên (config 90, PhoWhisper-ft rồi SFT) được 42,15, khớp trung bình val_random và val_app (42,2). Chưa đo trên A30, chưa có Docker.
+- id: '2'
+  name: Tất định hoá phần đụng hash
+  status: đang làm
+  gate: Không còn call bị từ chối; số mẫu sai hash vì ngày giờ và số tiền giảm rõ so với nấc 1
+  configs: ['13_*', '14_*', '16_*', '17_*', '18_*', '19_*', '7[0-3]_*']
+  note: Đã có bảng lịch, schema nén, sổ ghi lịch sử, giải mã theo schema, server tất định. Bộ giải số và máy tính ẩn sys.calc đang thử (configs 70-73).
+- id: '3'
+  name: Tinh chỉnh LLM (SFT)
+  status: đang làm
+  gate: Điểm val_app tiệm cận val_random; precision và recall call đọc đều tăng
+  configs: ['4[0-9]_*', '5[0-3]_*', '6[0167]_*']
+  note: SFT lên 61,0 / 42,9, khoảng cách tăng 19,9 điểm. Đổi tên 50% không thu hẹp. Chưa đạt cổng.
+- id: '4'
+  name: Các ý tưởng khác biệt (5.1, 5.3, 5.4)
+  status: chưa làm
+  gate: Gần như không còn mẫu sai hash vì ID; điểm tăng từ bỏ phiếu lớn hơn rủi ro thời gian
+  configs: []
+- id: '5'
+  name: ASR theo thực thể
+  status: đang làm
+  gate: Khoảng cách giữa chạy bằng audio_text gold và bằng ASR thu hẹp
+  configs: ['2[0-9]_asr_*', '3[0-9]_*', '5[4-7]_*', '6[2-589]_*']
+  note: Fine-tune LoRA bằng scripts/finetune_whisper.py, WER 20,5 → 9,3. Ghép với agent SFT được 51,8 / 32,5 (54/55), ASR vẫn mất khoảng 10 điểm. ChunkFormer-ft ghép kém hơn 10 điểm vì ra chữ thường, số viết bằng chữ.
+- id: '6'
+  name: Cứng hoá cho private
+  status: chưa làm
+  gate: Chạy hai lần cả public trong Docker ra cùng file nộp; p99 dưới 30 giây có biên an toàn
+  configs: []
+ideas:
+- id: '5.1'
+  name: Tham số có nguồn gốc, LLM chọn chứ không gõ
+  status: chưa làm
+  configs: ['16_*']
+  note: 16 (chặn hẳn ID chưa thấy) là bản thô, +2,9 điểm.
+- id: '5.2'
+  name: Chính sách đọc học từ dữ liệu, suy rộng bằng x-ref
+  status: đang làm
+  configs: ['10_*', '13_*']
+  note: Luật khai thác từ dữ liệu (prompts/rules/verified.md) hơn luật tối thiểu 2,5 điểm.
+- id: '5.3'
+  name: Bỏ phiếu trên tập lệnh ghi
+  status: chưa làm
+  configs: []
+- id: '5.4'
+  name: Làm, hỏi hay đứng yên theo kỳ vọng điểm
+  status: chưa làm
+  configs: []
+  note: Sau SFT, lỗi lớn nhất trên val_app là đứng yên khi phải làm (12 mẫu).
+- id: '5.5'
+  name: Huấn luyện để đọc schema, không để nhớ app
+  status: đang làm
+  configs: ['42_*', '43_*']
+  note: Đổi tên 50% chưa giúp; 53% mẫu train có cài app giữ lại mà gold không bao giờ gọi.
+- id: '5.6'
+  name: ASR gắn với thực thể
+  status: đang làm
+  configs: ['25_*', '27_*', '28_*', '29_*']
+  note: Luật sửa âm vị làm giảm độ giữ thực thể; fine-tune giúp rõ.
+proposals:
+- priority: 1
+  name: Nối ASR fine-tune với agent SFT (configs 54-57)
+  why: 'Đã đo: PhoWhisper-ft rồi SFT được 51,8 / 32,5, tăng 27,9 so với pipeline gốc; ASR vẫn mất khoảng 10 điểm ở cả hai tập'
+  cost: 20 phút GPU
+  status: xong
+- priority: 2
+  name: SFT không có app giữ lại trong schema (configs 44-53)
+  why: val_app hiện đo app bị dạy bỏ qua; gỡ app giữ lại khỏi installed_apps khi dựng dữ liệu để đo đúng app chưa thấy. Kèm đổi tên, nửa epoch, kiểm tra T4
+  cost: Kaggle T4 x2, khoảng 3 giờ mỗi đợt
+  status: đang làm
+- priority: 3
+  name: SFT trên bản chép ASR (configs 60-63, thử lại 66-69)
+  why: 'Lần 1: nhiễu 2 dB (WER 14,3) trộn 50% làm nghe đúng tụt 9,1 điểm trên val_random; đầu-cuối 40,8 so với 42,2. Lần 2: nhiễu 5 dB và chỉ dùng bản chép còn đủ thực thể của call gold'
+  cost: 2,5 giờ GPU
+  status: đang làm
+- priority: 4
+  name: Suy nghĩ ngắn trong đáp án SFT
+  why: thought đang để trống; lập luận tool nào khớp yêu cầu có thể bớt việc dừng ngay ở app mới
+  cost: 2,5 giờ GPU và công dựng thought
+  status: chưa làm
+- priority: 5
+  name: App tổng hợp kiểu CRUD khi huấn luyện
+  why: Public có 11/36 app không có trong train (65% mẫu); app giả giúp mô hình quen đọc schema mới
+  cost: 1-2 ngày code
+  status: chưa làm
+- priority: 6
+  name: Step-DPO hoặc GRPO trên ToolEnv
+  why: Học từ phần thưởng điểm thật thay vì chỉ bắt chước gold
+  cost: vài ngày
+  status: chưa làm
+- priority: 7
+  name: Fine-tune lại trên toàn bộ 1.545 mẫu khi nộp (configs 91, 92)
+  why: Thêm khoảng 50% dữ liệu đã có nhãn sẵn, không phải nghe. Dữ liệu và thí nghiệm Kaggle full, full-rename-all đã sẵn
+  cost: Kaggle T4, khoảng 1,5 lần một lượt train_rest
+  status: đang làm
+- priority: 8
+  name: Beam search 4 cho PhoWhisper-ft (configs 64, 65)
+  why: 'Đã đo: WER và độ giữ thực thể không đổi (val_random 11,1 → 11,3), đầu-cuối 42,2 → 42,0, ASR chậm gấp 4. Giữ greedy'
+  cost: 30 phút GPU
+  status: bỏ
+- priority: 9
+  name: Máy tính ẩn sys.calc cho ngày giờ và số (configs 70-73)
+  why: 17 mẫu gold text sai vì ngày giờ hoặc số (5 điểm val_random, 12 val_app), phần lớn do tính nhẩm. Agent gọi sys.calc, tự tính, không gửi đi; dữ liệu SFT chèn bước sys.calc ở 64 mẫu train_rest có phép tính tìm được
+  cost: 2 giờ GPU
+  status: đang làm

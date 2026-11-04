@@ -1,0 +1,7 @@
+# Như 40 với máy tính ẩn sys.calc (src/lifemate/numbers.py): agent tự tính biểu thức, không gửi call đó đi. Mô hình SFT trên
+# dữ liệu có chèn bước sys.calc (`build_sft.py --config` chính config này). Cũng là config dựng dữ liệu. So với 40.
+extends: ../base.yaml
+subset: val_random
+agent:
+  calc: true
+  llm: {model: models/qwen3-4b-sft-calc}

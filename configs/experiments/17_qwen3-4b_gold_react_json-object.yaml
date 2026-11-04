@@ -1,0 +1,3 @@
+# Ablation giải mã: chỉ ép JSON hợp lệ, không ép action và tên tool theo schema.
+extends: ../base.yaml
+agent: {json_mode: object}

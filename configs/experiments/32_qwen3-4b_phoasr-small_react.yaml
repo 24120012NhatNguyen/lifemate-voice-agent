@@ -1,0 +1,3 @@
+# Đầu-cuối: PhoASR-whisper-small (0,24 tỷ) + Qwen3-4B: ASR nhỏ, để dành ngân sách tham số cho LLM.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: Qualcomm-AI-Research/PhoASR-whisper-small, num_beams: 1, batch_size: 16}  # trùng 22

@@ -1,0 +1,4 @@
+# Ablation: bỏ các quy ước đọc đã khai thác từ dữ liệu, chỉ giữ luật tối thiểu.
+extends: ../base.yaml
+agent:
+  rules: prompts/rules/minimal.md

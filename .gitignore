@@ -1,5 +1,9 @@
-# Competition data stays outside the repository (organizer licence: team use only)
+# Competition data stays outside the repository (organiser licence: registered teams only)
 /data/
+*.jsonl
+*.wav
+*.mp3
+*.flac
 *.zip
 
 # Models and training artefacts
@@ -12,25 +16,35 @@ checkpoints/
 *.gguf
 *.onnx
 
-# Run outputs
+# Pipeline outputs and caches (see README: local layout)
+runs/
+cache/
+sft/
 outputs/
 submissions/
 logs/
 *.log
 wandb/
+artifacts/
+v2/
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*
 venv/
 .env
+.env.*
+!.env.example
 .ipynb_checkpoints/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Editors and OS
+# Editors, local tooling and OS
 .vscode/
 .idea/
+.claude/
+.cursor/
 .DS_Store

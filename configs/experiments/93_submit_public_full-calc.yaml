@@ -1,0 +1,6 @@
+# Như 91 với máy tính ẩn sys.calc: Qwen3-4B SFT trên toàn bộ train có chèn bước sys.calc (Kaggle `full-calc`). Chỉ dùng
+# nếu 70-73 (cùng công thức trên train_rest) thắng 40/41 và 54/55.
+extends: 90_submit_public.yaml
+agent:
+  calc: true
+  llm: {model: models/qwen3-4b-sft-full-calc}

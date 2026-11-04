@@ -1,0 +1,4 @@
+# Whisper-turbo qua CTranslate2: so tốc độ với bản transformers (20).
+extends: ../base.yaml
+asr: {name: faster_whisper, model: mobiuslabsgmbh/faster-whisper-large-v3-turbo, beam_size: 1}
+agent: {name: none}

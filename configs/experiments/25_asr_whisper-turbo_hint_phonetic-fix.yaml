@@ -1,0 +1,5 @@
+# Whisper-turbo có mồi tên riêng, rồi sửa tên bằng khoá âm vị phương ngữ (ý tưởng arXiv 2605.24451, luật tay).
+extends: ../base.yaml
+asr: {name: hf_whisper, model: openai/whisper-large-v3-turbo, hint: profile_history}
+asr_post: [{name: phonetic_entity_fix}]
+agent: {name: none}

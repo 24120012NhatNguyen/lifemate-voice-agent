@@ -1,0 +1,6 @@
+# Như 46 trên val_app.
+# Huấn luyện trên Kaggle (kaggle/run_sft.py drop-rename), gộp: `scripts/merge_lora.py models/qwen3-4b-sft-drop-rename-lora models/qwen3-4b-sft-drop-rename`.
+extends: ../base.yaml
+subset: val_app
+agent:
+  llm: {model: models/qwen3-4b-sft-drop-rename}

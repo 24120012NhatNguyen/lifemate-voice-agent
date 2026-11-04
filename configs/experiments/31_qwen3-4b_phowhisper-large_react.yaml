@@ -1,0 +1,3 @@
+# Đầu-cuối: PhoWhisper-large + Qwen3-4B.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: vinai/PhoWhisper-large, num_beams: 1, batch_size: 16}  # trùng 21

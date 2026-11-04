@@ -1,0 +1,4 @@
+# ChunkFormer CTC 110M. Giấy phép CC BY-NC 4.0: chỉ thử nghiệm, hỏi BTC trước khi nộp.
+extends: ../base.yaml
+asr: {name: chunkformer, model: khanhld/chunkformer-ctc-large-vie}
+agent: {name: none}

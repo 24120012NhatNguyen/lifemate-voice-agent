@@ -1,0 +1,4 @@
+# Đo thời gian thật mỗi mẫu: chạy tuần tự (workers 1), như khi BTC chạy Docker. Giới hạn 30 giây mỗi mẫu trên A30.
+extends: ../base.yaml
+limit: 30
+workers: 1

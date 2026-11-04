@@ -1,0 +1,6 @@
+# Như 54 với agent SFT trộn bản chép ASR: câu hỏi chính là ASR còn làm mất bao nhiêu điểm (54 mất 9,2).
+extends: ../base.yaml
+subset: val_random
+asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16}
+agent:
+  llm: {model: models/qwen3-4b-sft-asrmix}

@@ -1,0 +1,5 @@
+# Như 01 nhưng tắt validate: gold không có call sai schema nên điểm không đổi; dùng làm mẫu bật/tắt một bảo vệ.
+extends: ../base.yaml
+subset: all
+agent: {name: oracle}
+guards: {validate: false}

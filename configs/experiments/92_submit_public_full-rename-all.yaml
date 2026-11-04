@@ -1,0 +1,4 @@
+# Như 91 với dữ liệu đổi tên mọi mẫu (kaggle/run_sft.py full-rename-all). Chỉ nộp nếu 48/49 hơn 44/45 trên val_app.
+extends: 90_submit_public.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-full-rename-all}

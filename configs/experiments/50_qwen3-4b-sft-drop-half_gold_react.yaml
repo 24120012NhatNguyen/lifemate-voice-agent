@@ -1,0 +1,6 @@
+# Như 44, nửa epoch (--epochs 0.5): ít khớp quy ước app đã thấy hơn có giúp app mới?
+# Huấn luyện trên Kaggle (kaggle/run_sft.py drop-half), gộp: `scripts/merge_lora.py models/qwen3-4b-sft-drop-half-lora models/qwen3-4b-sft-drop-half`.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-drop-half}

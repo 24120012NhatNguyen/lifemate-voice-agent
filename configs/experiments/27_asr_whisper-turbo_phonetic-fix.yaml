@@ -1,0 +1,5 @@
+# Tách tác động: Whisper-turbo không mồi (dùng lại transcript của 20) + chỉ sửa tên bằng khoá âm vị.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: openai/whisper-large-v3-turbo, num_beams: 1, batch_size: 16}
+asr_post: [{name: phonetic_entity_fix}]
+agent: {name: none}

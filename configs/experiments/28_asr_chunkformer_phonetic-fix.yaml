@@ -1,0 +1,5 @@
+# ChunkFormer (dùng lại transcript của 23) + sửa tên bằng khoá âm vị phương ngữ.
+extends: ../base.yaml
+asr: {name: chunkformer, model: khanhld/chunkformer-ctc-large-vie}
+asr_post: [{name: phonetic_entity_fix}]
+agent: {name: none}

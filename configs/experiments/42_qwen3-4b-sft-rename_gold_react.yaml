@@ -1,0 +1,6 @@
+# Như 40 nhưng một nửa mẫu SFT được đổi tên app, tool, tham số (`build_sft.py --rename 0.5`, proposal 5.5).
+# Server: `DETERMINISTIC=1 MODEL=models/qwen3-4b-sft-rename scripts/serve_vllm.sh`.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-rename}

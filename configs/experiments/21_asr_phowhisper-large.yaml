@@ -1,0 +1,4 @@
+# Chỉ đo ASR (WER, CER, độ giữ thực thể) trên lượt cuối và lịch sử.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: vinai/PhoWhisper-large, num_beams: 1, batch_size: 16}
+agent: {name: none}

@@ -1,0 +1,6 @@
+# PhoWhisper-large fine-tune trên cả public_test, chỉ để điền cache ASR cho 90 (PhoWhisper và vLLM không cùng vừa 16 GB).
+extends: ../base.yaml
+split: public_test
+subset: all
+asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16}
+agent: {name: none}

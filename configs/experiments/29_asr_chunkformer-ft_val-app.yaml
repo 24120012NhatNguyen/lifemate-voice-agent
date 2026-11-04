@@ -1,0 +1,5 @@
+# Như 29_asr_chunkformer-ft trên val_app. Cũng điền cache ASR cho 57. CC BY-NC 4.0: hỏi BTC trước khi nộp.
+extends: ../base.yaml
+subset: val_app
+asr: {name: chunkformer, model: models/chunkformer-ctc-large-vie-ft}
+agent: {name: none}
