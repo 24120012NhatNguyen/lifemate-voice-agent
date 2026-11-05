@@ -1,0 +1,3 @@
+# Như 78 (PhoWhisper-ft có mồi tên, cả val_random) với các luật của 88; so với 78.
+extends: 78_qwen3-4b-sft_phowhisper-large-ft-hint_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}

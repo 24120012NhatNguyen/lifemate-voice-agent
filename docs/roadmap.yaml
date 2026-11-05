@@ -14,19 +14,19 @@ rungs:
   status: xong
   gate: File nộp hợp lệ, dưới 30 giây mỗi mẫu, có số đo gốc trên cả hai tập kiểm định
   configs: ['10_*', '11_*', '12_*', '3[0-3]_*', '90_*']
-  note: Qwen3-4B chỉ dùng prompt được 34,2 trên val_random, 36,1 trên val_app. Bản nộp public đầu tiên (config 90, PhoWhisper-ft rồi SFT) được 42,15, khớp trung bình val_random và val_app (42,2). Chưa đo trên A30, chưa có Docker.
+  note: Qwen3-4B chỉ dùng prompt được 34,2 trên val_random, 36,1 trên val_app. Bản nộp public đầu tiên (config 90, PhoWhisper-ft rồi SFT) được 42,15, khớp trung bình val_random và val_app (42,2); SFT trên cả train (91) được 44,70. Chưa đo trên A30, chưa có Docker.
 - id: '2'
   name: Tất định hoá phần đụng hash
   status: đang làm
   gate: Không còn call bị từ chối; số mẫu sai hash vì ngày giờ và số tiền giảm rõ so với nấc 1
-  configs: ['13_*', '14_*', '16_*', '17_*', '18_*', '19_*', '7[0-3]_*']
-  note: Đã có bảng lịch, schema nén, sổ ghi lịch sử, giải mã theo schema, server tất định. Bộ giải số và máy tính ẩn sys.calc đang thử (configs 70-73).
+  configs: ['13_*', '14_*', '16_*', '17_*', '18_*', '19_*', '7[0-3]_*', '8[89]_*', '9[67]_*']
+  note: Đã có bảng lịch, schema nén, sổ ghi lịch sử, giải mã theo schema, server tất định. Máy tính ẩn sys.calc (70-73) không giúp vì mô hình gần như không gọi (2/400 lượt). Luật viết tay sửa ngày giờ, số tiền, số phút ở tầng D (configs 88, 89, 96, 97) +0,3 đến +2,1, không mẫu nào tệ đi.
 - id: '3'
   name: Tinh chỉnh LLM (SFT)
   status: đang làm
   gate: Điểm val_app tiệm cận val_random; precision và recall call đọc đều tăng
-  configs: ['4[0-9]_*', '5[0-3]_*', '6[0167]_*']
-  note: SFT lên 61,0 / 42,9, khoảng cách tăng 19,9 điểm. Đổi tên 50% không thu hẹp. Chưa đạt cổng.
+  configs: ['4[0-9]_*', '5[0-3]_*', '6[0167]_*', '8[0-7]_*']
+  note: SFT lên 61,0 / 42,9, khoảng cách tăng 19,9 điểm. Đổi tên, gỡ app giữ lại đều không thu hẹp. Chỉ đổi seed đã lệch 1,2 điểm (độ lệch chuẩn, cả tập); fp16 trên T4 ngang bf16. Chưa đạt cổng.
 - id: '4'
   name: Các ý tưởng khác biệt (5.1, 5.3, 5.4)
   status: chưa làm
@@ -81,14 +81,14 @@ proposals:
   status: xong
 - priority: 2
   name: SFT không có app giữ lại trong schema (configs 44-53)
-  why: val_app hiện đo app bị dạy bỏ qua; gỡ app giữ lại khỏi installed_apps khi dựng dữ liệu để đo đúng app chưa thấy. Kèm đổi tên, nửa epoch, kiểm tra T4
-  cost: Kaggle T4 x2, khoảng 3 giờ mỗi đợt
-  status: đang làm
+  why: 'Đã đo: gỡ app giữ lại (drop) −4,9 ± 3,8 / −0,4 ± 3,0 so với SFT, đổi tên mọi mẫu thêm −3,7 / −1,0, nên val_app không tăng (hiệu trong dao động theo seed). t4-check: fp16 trên T4 ngang bf16'
+  cost: Kaggle T4 x2, khoảng 4 giờ mỗi đợt
+  status: bỏ
 - priority: 3
   name: SFT trên bản chép ASR (configs 60-63, thử lại 66-69)
-  why: 'Lần 1: nhiễu 2 dB (WER 14,3) trộn 50% làm nghe đúng tụt 9,1 điểm trên val_random; đầu-cuối 40,8 so với 42,2. Lần 2: nhiễu 5 dB và chỉ dùng bản chép còn đủ thực thể của call gold'
+  why: 'Lần 1: nhiễu 2 dB (WER 14,3) trộn 50% làm nghe đúng tụt 9,1 điểm trên val_random; đầu-cuối 40,8 so với 42,2. Lần 2: nhiễu 5 dB, giữ thực thể: đầu-cuối 39,3, phần mất do ASR vẫn khoảng 10 điểm'
   cost: 2,5 giờ GPU
-  status: đang làm
+  status: bỏ
 - priority: 4
   name: Suy nghĩ ngắn trong đáp án SFT
   why: thought đang để trống; lập luận tool nào khớp yêu cầu có thể bớt việc dừng ngay ở app mới
@@ -96,7 +96,7 @@ proposals:
   status: chưa làm
 - priority: 5
   name: App tổng hợp kiểu CRUD khi huấn luyện
-  why: Public có 11/36 app không có trong train (65% mẫu); app giả giúp mô hình quen đọc schema mới
+  why: 'Public có 11/36 app không có trong train (65% mẫu). Ở val_app mô hình dừng ngay ở app chưa thấy, và bị ép gọi thì chỉ 3/16 ca được điểm (configs 74-77); gỡ app hay đổi tên khi SFT cũng không giúp. App giả giúp mô hình quen đọc schema mới'
   cost: 1-2 ngày code
   status: chưa làm
 - priority: 6
@@ -105,10 +105,10 @@ proposals:
   cost: vài ngày
   status: chưa làm
 - priority: 7
-  name: Fine-tune lại trên toàn bộ 1.545 mẫu khi nộp (configs 91, 92)
-  why: Thêm khoảng 50% dữ liệu đã có nhãn sẵn, không phải nghe. Dữ liệu và thí nghiệm Kaggle full, full-rename-all đã sẵn
+  name: Fine-tune lại trên toàn bộ 1.545 mẫu khi nộp (configs 91, 92, 94)
+  why: 'Thêm khoảng 50% dữ liệu đã có nhãn sẵn, không phải nghe. Đã đo public: 91 (fp16 Kaggle) 44,70, 94 (bf16 máy nhà) 43,17, v1 42,15. Thêm dữ liệu chỉ +1,8 trung bình, cỡ dao động seed: 65% mẫu public dùng app chưa có trong train. Bản chính 91'
   cost: Kaggle T4, khoảng 1,5 lần một lượt train_rest
-  status: đang làm
+  status: xong
 - priority: 8
   name: Beam search 4 cho PhoWhisper-ft (configs 64, 65)
   why: 'Đã đo: WER và độ giữ thực thể không đổi (val_random 11,1 → 11,3), đầu-cuối 42,2 → 42,0, ASR chậm gấp 4. Giữ greedy'
@@ -116,6 +116,31 @@ proposals:
   status: bỏ
 - priority: 9
   name: Máy tính ẩn sys.calc cho ngày giờ và số (configs 70-73)
-  why: 17 mẫu gold text sai vì ngày giờ hoặc số (5 điểm val_random, 12 val_app), phần lớn do tính nhẩm. Agent gọi sys.calc, tự tính, không gửi đi; dữ liệu SFT chèn bước sys.calc ở 64 mẫu train_rest có phép tính tìm được
+  why: 'Đã đo: so với t4-check −0,7 ± 2,6 / +1,0 ± 3,6. Mô hình chỉ gọi sys.calc 2/400 lượt (6,3% mẫu train có bước calc), cả hai sai; máy tính chưa nhận thời lượng ghép như 1h20m'
   cost: 2 giờ GPU
+  status: bỏ
+- priority: 10
+  name: Gộp vài seed của agent SFT (configs 52, 53, 80-87)
+  why: 'Đã đo: chỉ đổi seed, trung bình hai tập lệch 50,6-53,6 (độ lệch chuẩn 1,2 trên cả tập, 2,2 trên 100 mẫu). Seed tốt trên train_rest chưa chắc tốt khi học cả train; trung bình trọng số LoRA của vài seed hoặc bỏ phiếu giữa chúng có thể bớt dao động. Mọi so sánh công thức về sau cần cả tập hoặc vài seed'
+  cost: Kaggle T4, 4 giờ mỗi cặp seed
+  status: chưa làm
+- priority: 11
+  name: Hỏi lại khi bước đầu dừng ở app chưa thấy (configs 74-77)
+  why: 'Đã đo trên toàn bộ val: nhắc thì mô hình vẫn dừng (+0,0 / +0,3); ép gọi thì val_app +1,0 nhưng val_random −2,2 vì phá mẫu gold rỗng'
+  cost: 30 phút GPU
+  status: bỏ
+- priority: 12
+  name: Mồi tên riêng cho PhoWhisper-ft (configs 78, 79)
+  why: 'Trên 100 mẫu chung: đầu-cuối +0,9 (val_random) và +1,5 (val_app), khoảng tin cậy còn chứa 0; ASR chậm từ 0,5 lên 1 giây. Cần so trên toàn bộ val'
+  cost: 30 phút GPU
   status: đang làm
+- priority: 13
+  name: Giới hạn thời gian mỗi mẫu (config 95)
+  why: 'Chạy tuần tự, bản nộp 91 có p95 7,2 giây, chậm nhất 10,1; quá 30 giây chỉ xảy ra khi 8 mẫu chạy cùng lúc. agent.time_budget là lưới an toàn cho Docker'
+  cost: 15 phút GPU
+  status: xong
+- priority: 14
+  name: Luật viết tay sửa tham số call ghi (configs 88, 89, 96-98)
+  why: 'Đã đo trên toàn bộ val: +2,1 / +0,7 nghe đúng, +1,3 / +0,3 qua ASR, không mẫu nào tệ đi. Bản nộp 98 khác 91 ở 11/634 mẫu. Ngày giờ nói ra, số tiền nói tắt, số phút "từ A tới B", hỏi lại khi không ai nói số tiền hay giờ; không đổi call gold nào của train'
+  cost: 1 ngày code
+  status: xong

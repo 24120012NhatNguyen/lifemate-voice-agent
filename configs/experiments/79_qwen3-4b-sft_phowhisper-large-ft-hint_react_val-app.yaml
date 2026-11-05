@@ -1,0 +1,6 @@
+# Như 78 trên val_app; so với 55.
+extends: ../base.yaml
+subset: val_app
+asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16, hint: profile_history}
+agent:
+  llm: {model: models/qwen3-4b-sft}

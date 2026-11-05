@@ -1,0 +1,3 @@
+# Như 40 (v1, seed 0, bf16 ở máy nhà) nhưng chạy cả val_random: mốc cho 80-85 (seed 1-3) và 52 (t4-check) trên cả tập.
+# Tên riêng để run_queue.sh không bỏ qua vì 40 đã có lượt 100 mẫu (FORCE=1 sẽ xoá lượt đó).
+extends: 40_qwen3-4b-sft_gold_react.yaml

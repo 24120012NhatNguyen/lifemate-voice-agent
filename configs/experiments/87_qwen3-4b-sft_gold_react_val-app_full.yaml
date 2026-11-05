@@ -1,0 +1,2 @@
+# Như 41 trên cả val_app: mốc cho 81, 83, 85 và 53.
+extends: 41_qwen3-4b-sft_gold_react_val-app.yaml

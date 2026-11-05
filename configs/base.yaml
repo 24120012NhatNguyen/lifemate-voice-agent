@@ -29,6 +29,8 @@ agent:                  # Tầng B + C
   ledger: true
   max_steps: 8
   json_mode: schema     # off | object | schema (react_json: ép action và tên tool bằng JSON Schema)
+  time_budget: null     # giây mỗi mẫu, tính cả ASR (luật 30 s): gần hết giờ thì dừng, nộp các call đã gọi
+  recheck_stop: null    # {mode: nudge | force, known: train_rest | all | [app]}: hỏi lại khi bước đầu dừng mà có app chưa thấy
 
 guards:                 # Tầng D (xem src/lifemate/guards.py)
   validate: true

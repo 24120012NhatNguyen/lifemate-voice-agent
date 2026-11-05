@@ -1,0 +1,5 @@
+# Như 91 nhưng mô hình `full` huấn luyện ở máy nhà bằng bf16 (scripts/train_sft.py --data sft/train_full.jsonl), không
+# phải fp16 trên Kaggle T4. t4-check (52/53 so với 86/87) cho thấy fp16 ngang bf16, nên 91 và 94 kỳ vọng như nhau. Public: 43,17 (91: 44,70), hiệu trong dao động huấn luyện.
+extends: 90_submit_public.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-full-local}
