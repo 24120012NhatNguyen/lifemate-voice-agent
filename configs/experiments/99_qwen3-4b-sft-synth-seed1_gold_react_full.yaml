@@ -1,0 +1,5 @@
+# Như 99 val_random với seed 1: lợi của app tổng hợp có vượt độ dao động giữa các seed không (so với 80/82/84 và 86).
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-synth-seed1}

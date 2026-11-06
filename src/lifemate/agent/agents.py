@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import json
 import re
-import time
 
-from .. import context, data, splits
+from .. import context, data
 from ..config import REPO
 from ..numbers import calc
 from ..registry import register
-from .llm import LLM, LLMTimeout
+from .llm import LLM
 
 
 class Agent:
@@ -129,56 +128,26 @@ def _parse_action(text: str) -> dict | None:
     return None
 
 
-def _action_schema(tools: list[str], actions=("call", "stop")) -> dict:
+def _action_schema(tools: list[str]) -> dict:
     """JSON Schema cho một hành động: vLLM ép đầu ra theo schema này (giải mã có ràng buộc)."""
     return {"type": "object", "properties": {
         "thought": {"type": "string", "maxLength": 300},
-        "action": {"type": "string", "enum": list(actions)},
+        "action": {"type": "string", "enum": ["call", "stop"]},
         "name": {"type": "string", "enum": tools},
         "arguments": {"type": "object"}},
         "required": ["thought", "action"]}
-
-
-def _json_schema(schema: dict) -> dict:
-    return {"response_format": {"type": "json_schema", "json_schema": {"name": "action", "schema": schema}}}
-
-
-def _nudge(split: str, tools: list[str]) -> str:
-    specs = data.tool_specs(split)
-    lines = "\n".join(f"- {t}: {specs.get(t, {}).get('description', '')}" for t in tools)
-    return ("Bạn định dừng mà chưa gọi tool nào, trong khi máy có cài app bạn chưa dùng bao giờ:\n" + lines +
-            "\nNếu một tool ở trên làm được yêu cầu của người dùng thì gọi nó; nếu thật sự không tool nào phù hợp, "
-            'trả lại {"thought": "...", "action": "stop"}.')
 
 
 @register("agent", "react_json")
 class ReactJSON(LLMAgent):
     """ReAct với prompt tự viết: mỗi bước LLM trả {"thought", "action": call|stop, "name", "arguments"}."""
 
-    def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, **kw):
-        """json_mode: off | object (chỉ ép JSON hợp lệ) | schema (ép action và tên tool trong tập đã cài).
-        time_budget: giây cho cả mẫu, tính cả ASR (luật 30 s). Trước mỗi lượt LLM mà còn dưới min_step_sec thì
-            dừng; lượt nào chạy quá phần còn lại cũng dừng. Các call đã gọi vẫn được nộp.
-        recheck_stop: {mode: nudge | force, known: train_rest | all | [app, ...]}. Bước đầu đã stop mà máy có app
-            không nằm trong call gold của tập `known` (app mô hình SFT chưa thấy được dùng; danh sách tên app khi
-            không có dữ liệu train, vd. trong Docker) thì hỏi lại đúng một lần:
-            nudge nhắc tên và mô tả tool của các app đó, mô hình vẫn được stop; force (cần json_mode: schema)
-            bắt gọi một tool của chúng hoặc sys.ask_missing_info."""
+    def __init__(self, json_mode="schema", **kw):
+        """json_mode: off | object (chỉ ép JSON hợp lệ) | schema (ép action và tên tool trong tập đã cài)."""
         super().__init__(**kw)
         self.json_mode = {True: "object", False: "off"}.get(json_mode, json_mode)
-        self.time_budget = time_budget
-        self.min_step_sec = min_step_sec
-        self.recheck = recheck_stop or {}
-
-    def _unseen_tools(self, sample) -> list[str]:
-        if not self.recheck:
-            return []
-        known = self.recheck.get("known", "train_rest")
-        known = set(known) if isinstance(known, list) else splits.known_apps(known)
-        return [t for app, a in sample["context"]["installed_apps"].items() if app not in known for t in a["tools"]]
 
     def run(self, split, sample, transcript, env):
-        t0 = time.perf_counter() - transcript.get("sec", 0.0)  # đồng hồ của mẫu chạy từ lúc bắt đầu ASR
         msgs = [{"role": "system", "content": self.system_prompt(split, sample)},
                 {"role": "user", "content": self.user_prompt(sample, transcript)}]
         steps, retries = [], 0
@@ -186,24 +155,11 @@ class ReactJSON(LLMAgent):
         if self.json_mode == "object":
             kw = {"response_format": {"type": "json_object"}}
         elif self.json_mode == "schema":
-            kw = _json_schema(_action_schema(data.installed_tools(sample) + ([CALC] if self.calc else [])))
+            schema = _action_schema(data.installed_tools(sample) + ([CALC] if self.calc else []))
+            kw = {"response_format": {"type": "json_schema", "json_schema": {"name": "action", "schema": schema}}}
         tools = set(data.installed_tools(sample))
-        unseen = self._unseen_tools(sample)
-        once = None  # kw riêng cho đúng lượt kế tiếp (recheck force)
         for _ in range(self.max_steps + (4 if self.calc else 0)):  # bước sys.calc không tính vào max_steps
-            req = once or kw
-            once = None
-            if self.time_budget:
-                left = self.time_budget - (time.perf_counter() - t0)
-                if left < self.min_step_sec:
-                    steps.append({"action": "budget_stop", "sec_left": round(left, 3)})
-                    break
-                req = {**req, "timeout": left}
-            try:
-                msg, meta = self.llm.chat(msgs, **req)
-            except LLMTimeout:
-                steps.append({"action": "timeout"})
-                break
+            msg, meta = self.llm.chat(msgs, **kw)
             act = _parse_action(msg.content)
             if isinstance(act, dict) and act.get("action") in tools:  # tên tool đặt nhầm vào "action"
                 act = {**act, "name": act.get("name") or act["action"], "action": "call"}
@@ -220,14 +176,6 @@ class ReactJSON(LLMAgent):
             step.update(action=act["action"], thought=act.get("thought", ""))
             if act["action"] == "stop":
                 steps.append(step)
-                if unseen and not any(s.get("action") == "call" or s.get("recheck") for s in steps[:-1]):
-                    step["recheck"] = self.recheck.get("mode", "nudge")
-                    if step["recheck"] == "force" and self.json_mode == "schema":
-                        once = _json_schema(_action_schema(unseen + ["sys.ask_missing_info"], actions=("call",)))
-                    else:
-                        msgs += [{"role": "assistant", "content": msg.content},
-                                 {"role": "user", "content": _nudge(split, unseen)}]
-                    continue
                 break
             name, args = act.get("name", ""), act.get("arguments") or {}
             if self.calc and name == CALC:  # agent tự tính, không qua môi trường nên không vào file nộp

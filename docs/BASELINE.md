@@ -10,7 +10,7 @@ Khung này để thử nhiều kiến trúc mà không sửa code: mỗi tầng 
 | A'. Hậu xử lý | `asr_post` | `strip_fillers`, `phonetic_entity_fix` | `src/lifemate/asr/post.py` |
 | B. Dựng ngữ cảnh | `agent.timetable`, `agent.schema`, `agent.history`, `agent.ledger` | bảng lịch 3 ngày hoặc 2 tuần; schema thô hoặc nén; sổ ghi lịch sử bật/tắt | `src/lifemate/context.py` |
 | C. Agent | `agent.name`, `agent.llm`, `agent.prompt`, `agent.rules` | `empty`, `oracle`, `react_json`, `native_tools`; LLM bất kỳ qua API chuẩn OpenAI | `src/lifemate/agent/` và `prompts/` |
-| D. Middleware | `guards.*` | validate, chuẩn hoá, bù `end` lịch, chặn ID (off, warn, block), chặn gọi trùng; luật sửa tham số theo lời nói (`clock_fix`, `money_k`, `span_min`, `ask_missing`, `pick_one`) | `src/lifemate/guards.py`, `fixes.py` |
+| D. Middleware | `guards.*` | validate, chuẩn hoá, bù `end` lịch, chặn ID (off, warn, block), chặn gọi trùng | `src/lifemate/guards.py` |
 | Đo | `subset`, `limit`, `repeats` | `val_random`, `val_app` (10 app giữ lại), `train_rest`, `all`; lặp để đo độ ổn định | `src/lifemate/splits.py`, `scoring.py` |
 
 `lifemate list` in ra mọi phương án đã đăng ký và trạng thái của chúng.
@@ -300,6 +300,55 @@ Cùng công thức của `40` (dữ liệu `train.jsonl`, 1 epoch), huấn luy�
 - **Chỉ đổi seed, trung bình hai tập lệch tới 3 điểm** (50,6 đến 53,6). Trên 100 mẫu, độ lệch chuẩn gần gấp đôi, và thứ hạng còn đảo: `seed1` ngang v1 trên 100 mẫu (52,0) nhưng kém 2,8 điểm trên cả tập. Seed 0 có trung bình cao nhất ở cả hai độ chính xác, có thể chỉ do may; v1 và cả hai bản nộp v2 đều dùng seed 0.
 - Vì vậy các quyết định trước đây dựa trên một lượt huấn luyện và 100 mẫu (đổi tên −5,2, drop −4,9, rename-all −3,7, asrmix −1,4 đầu-cuối) chỉ là bằng chứng yếu: hướng đều là âm nên không đổi kết luận, nhưng hiệu nhỏ hơn khoảng 3 điểm không tách được khỏi seed. Quy tắc ở mục 5.
 
+**App tổng hợp kiểu CRUD (configs 99_\*, roadmap đề xuất 5)**
+
+```bash
+.venv/bin/python scripts/build_sft.py --synth 600 --out sft/train_synth.jsonl
+```
+
+```bash
+scripts/gpu_job.sh train sft/train_synth.jsonl models/qwen3-4b-sft-synth
+```
+
+```bash
+scripts/gpu_job.sh train sft/train_synth.jsonl models/qwen3-4b-sft-synth-seed1 --seed 1
+```
+
+Seed 2 và 3 huấn luyện trên Kaggle T4 x2: đóng gói bằng `scripts/kaggle_pack.sh sft/kaggle_synth train_synth` làm dataset riêng tư, notebook chạy `python run_sft.py synth-seed2 synth-seed3`, rồi gộp adapter tải về:
+
+```bash
+.venv/bin/python scripts/merge_lora.py models/kaggle_synth/extracted/qwen3-4b-sft-synth-seed2-lora models/qwen3-4b-sft-synth-seed2
+```
+
+```bash
+scripts/gpu_job.sh eval models/qwen3-4b-sft-synth configs/experiments/99_qwen3-4b-sft-synth_gold_react_full.yaml configs/experiments/99_qwen3-4b-sft-synth_gold_react_val-app_full.yaml
+```
+
+- Đổi tên và gỡ app giữ lại không làm `val_app` tăng, vì mô hình vẫn chỉ thấy 35 app của `train_rest` được gọi. `src/lifemate/synth/` sinh app mới cho mỗi mẫu: 19 lĩnh vực (thú cưng, chăm cây, bảo dưỡng xe, đặt bàn, đặt phòng, spa, thợ sửa chữa, sổ chi tiêu, phim muốn xem, album ảnh, chung cư, lịch trình du lịch, wifi, bảo hành, bảo hiểm, đặt sân, từ thiện, gọi gas nước, xin nghỉ học). Không lĩnh vực nào trùng app của train, của `val_app` hay của public, nên `val_app` vẫn đo app chưa thấy.
+- Mỗi lần dựng, tên app, collection, tool và tham số được chọn lại ngẫu nhiên (`list_pets` hay `get_pets`, `start` hay `time` hay `at`), kèm `x-ref`, `x-match: fuzzy`, mô tả ISO như catalog BTC. Tool chạy thật trên lớp `App` của `zaic_tools` với kiểm schema của chính nó; call vào app thật (báo thức, nhắc việc) chuyển cho ToolEnv của mẫu chủ. Kết quả tool và state_hash vì vậy là thật, không chép tay.
+- Mỗi mẫu tổng hợp mượn ngữ cảnh của một mẫu `train_rest` (giờ, hồ sơ, các app thật đã cài), cài thêm 1 đến 3 app tổng hợp, và yêu cầu cuối nhắm vào một trong số đó. Kịch bản theo quy ước của gold train: tạo mới; đọc rồi ghi (list gọi với {}, search với query đúng tên người dùng nói); chỉ đọc; dùng lại ID trong lịch sử, không đọc lại; thiếu tham số bắt buộc hoặc tên khớp hai mục thì đọc rồi `sys.ask_missing_info` ở cuối; không gọi gì khi người dùng bỏ yêu cầu, khi app chưa cài, hoặc chỉ cảm ơn; câu điều kiện; tự sửa giữa câu; hai việc trong một câu (có khi kèm báo thức hay nhắc việc của app thật).
+- Lời nói dựng từ mẫu câu tiếng Việt có tiểu từ ("nha", "nghen", "giùm"), ngày giờ theo đúng nhãn bảng thời gian ("9 giờ sáng mai", "thứ Bảy tuần này lúc 3 rưỡi chiều").
+- `tests/test_synth.py` phát lại gold của 300 mẫu qua middleware ra đúng từng kết quả và state_hash, không có cảnh báo, và phát lại 120 mẫu qua ReactJSON thật với LLM giả: mọi tin nhắn trùng từng chữ dữ liệu huấn luyện.
+- `sft/train_synth.jsonl`: 1.018 mẫu `train_rest` y hệt `sft/train.jsonl` của `40`, cộng 600 mẫu tổng hợp (1.526 lượt assistant, 2,44 triệu token, mỗi mẫu p50 4.013 token). Công thức của `40`: LoRA r=16, 1 epoch, seed 0, bf16 ở máy nhà; 102 bước, 626 token/s, đỉnh 11,3 GB, khoảng 3 giờ. Seed 2, 3 trên Kaggle (fp16): 5,9 giờ mỗi seed, 330 token/s mỗi T4. Lần đầu huấn luyện seed 1 ở máy nhà hỏng ở bước 69 vì `cudaErrorLaunchTimeout` (GPU này chạy cả màn hình); chạy lại thì xong.
+
+Kết quả trên cả `val_random` (225) và `val_app` (301), chấm cùng máy nhà. Hàng "không synth" là 5 lượt của bảng dao động theo seed ở trên (v1, `t4-check`, `seed1`-`seed3`). Cột cuối là hiệu ghép cặp với lượt không synth cùng seed (seed 0: v1; seed 1-3: `seed1`-`seed3`, tức `80`-`85`).
+
+| Mô hình | seed | Huấn luyện | `val_random` | `val_app` | Trung bình | Hơn cùng seed không synth (`val_random` / `val_app`) |
+| --- | --- | --- | --- | --- | --- | --- |
+| v1 (`86`, `87`) | 0 | bf16, máy nhà | 59,2 | 47,6 | 53,4 | |
+| không synth, 5 lượt: trung bình (độ lệch chuẩn) | 0-3 | | 57,2 (1,6) | 47,3 (1,1) | 52,2 (1,2) | |
+| `synth` (`99_*`) | 0 | bf16, máy nhà | 57,7 | 51,6 | 54,7 | −1,4 ± 2,7 / +4,0 ± 2,1 |
+| `synth-seed1` (`99_*-seed1`) | 1 | bf16, máy nhà | 59,9 | 50,0 | 54,9 | +4,2 ± 1,8 / +4,4 ± 1,8 |
+| `synth-seed2` (`99_*-seed2`) | 2 | fp16, T4 | 57,2 | **53,8** | **55,5** | +1,7 ± 2,4 / +6,1 ± 2,1 |
+| `synth-seed3` (`99_*-seed3`) | 3 | fp16, T4 | **60,2** | 50,3 | 55,2 | +3,0 ± 2,2 / +3,4 ± 1,9 |
+| synth, 4 lượt: trung bình (độ lệch chuẩn) | 0-3 | | 58,8 (1,5) | 51,4 (1,7) | 55,1 (0,4) | +1,9 ± 1,1 / +4,5 ± 1,0 |
+
+- **App tổng hợp giúp, rõ nhất trên `val_app`.** So cùng seed, `val_app` tăng ở cả 4 seed (+3,4 đến +6,1; trung bình +4,5 ± 1,0) và `val_random` tăng ở 3/4 seed (trung bình +1,9 ± 1,1). Trung bình hai tập tăng 3,2 điểm (độ lệch giữa 4 seed 1,4), vượt ngưỡng khoảng 3 điểm của mục 5. Lượt synth kém nhất vẫn hơn lượt không synth tốt nhất, cả trên trung bình hai tập (54,7 so với 53,6) lẫn trên `val_app` (50,0 so với 48,6). Hash `val_app` 60-64% so với 56-59%.
+- **Khoảng cách `val_random` − `val_app` thu hẹp từ 9,9 xuống 7,3 điểm**, điều đổi tên và gỡ app giữ lại không làm được. Trung bình hai tập cũng ít dao động theo seed hơn (độ lệch chuẩn 0,4 so với 1,2), nhưng 4 lượt chưa đủ để chắc điều này.
+- **Phần tăng trên `val_app` đến từ việc đọc schema lạ tốt hơn.** Ở seed 0, 259 mẫu giữ nguyên kiểu phản ứng góp +3,0 (sai tool ghi 15 → 9, sai ngày giờ 18 → 12, thừa call đọc 8 → 4), mẫu trước đứng yên hay hỏi lại nay làm đúng góp +2,4, mẫu nay hỏi lại thừa mất 2,2. Cộng cả 4 cặp cùng seed, sai tool ghi trên `val_app` giảm 54 → 35.
+- **Hỏi lại thừa là điểm yếu chung, synth chỉ làm nặng thêm chút trên `val_app`.** Số mẫu gold làm mà mô hình hỏi lại, theo cặp cùng seed: `val_app` 15 → 26, 34 → 30, 17 → 24, 17 → 17 (trung bình 20,8 → 24,3); `val_random` 4 → 9, 12 → 13, 7 → 5, 5 → 3. Ở seed 0, trong 26 ca hỏi lại mới (18 + 8), 12 ca hỏi ID (`contact_id`, `order_id`, `flight_id`...) và 8 trong số đó không đọc gì trước. 14 ca còn lại hỏi một giá trị phải tự suy ra: email đọc thành lời ("data a còng example chấm test"), giờ tính từ giờ khác ("trước giờ chiếu nửa tiếng"), mục tiêu mới bằng mục tiêu cũ cộng thêm. Cũng có ca search ra hai mục, người dùng đã nói rõ bản nào ("bản in chữ to") mà mô hình vẫn hỏi. Tỉ lệ mẫu có hỏi lại trong phần tổng hợp (9,3%) thấp hơn phần thật (15,6%), nên lỗi không do dữ liệu hỏi nhiều hơn. Bộ sinh chưa có các ca này: `ask_ambiguous` luôn hỏi khi tên gọi khớp hai mục, chưa có ca search ra nhiều mục mà lời nói chỉ rõ một, và giá trị tổng hợp luôn nói thẳng, không phải đọc hay tính ra.
+- **Kết luận:** đưa app tổng hợp vào công thức SFT. Bản nộp huấn luyện trên toàn bộ train dựng dữ liệu bằng `scripts/build_sft.py --subset all --synth 600 --out sft/train_full_synth.jsonl` (chưa chạy). Hướng tiếp theo cho bộ sinh: thêm ba loại ca trên (chọn theo chi tiết khi search ra nhiều mục, giá trị phải đọc hay tính ra, đọc trước khi hỏi ID), và thử nhiều mẫu tổng hợp hơn 600.
+
 ## 8. Ghép đầu-cuối khi cả hai tầng đã tinh chỉnh (04/11/2026)
 
 ASR fine-tune bằng `scripts/finetune_whisper.py` và `scripts/finetune_chunkformer.py` (`models/phowhisper-large-ft`, `models/chunkformer-ctc-large-vie-ft`), agent là `models/qwen3-4b-sft` của `40`. PhoWhisper và vLLM không cùng vừa 16 GB, nên ASR chạy trước một mình để điền cache (configs `29_*_val-app`), rồi mới bật vLLM.
@@ -403,65 +452,6 @@ Công thức của v1 (PhoWhisper-large-ft greedy, rồi Qwen3-4B SFT seed 0), a
 - Tăng ít vì phần thêm vào không chạm điểm yếu chính. 410/634 mẫu public (65%) cài ít nhất một trong 11 app không có trong train, và khoảng 260 dự đoán gọi các app đó; 524 mẫu thêm vào đều thuộc app đã thấy. Trên val, lượt SFT đầu tăng 26,8 điểm ở app đã thấy nhưng chỉ 6,8 ở app giữ lại. ASR giữ nguyên (PhoWhisper-ft chỉ học audio `train_rest`) và vẫn mất khoảng 10 điểm.
 - Không nộp `92` (`full-rename-all`) và `93` (`full-calc`): đổi tên và `sys.calc` đều không thắng trên `train_rest`.
 - Tab "Kiến trúc tốt nhất" của `app/compare.py` làm đúng các bước này từ `runs/` (gộp cả các git worktree nếu có): mỗi tầng một bảng xếp hạng, tổ hợp đang chọn, và bảng ghép có cột "mất do ASR".
-
-**Hỏi lại khi bước đầu dừng ở app chưa thấy (configs 74-77): không dùng**
-
-- Ở val_app, mọi ca "làm → đứng yên" đều là `stop` ngay bước đầu, không gọi tool nào: 10/100 với `41`, 13 với `drop` (`45`), 21 với `drop-rename-all` (`49`), tập sau chứa tập trước. Gỡ app giữ lại khỏi dữ liệu SFT không giảm lỗi này.
-- `agent.recheck_stop` hỏi lại một lần khi bước đầu là `stop` mà máy có app chưa từng được gọi trong tập `known`. `nudge` liệt kê tool của các app đó và để mô hình tự chọn lại. `force` ép lượt sau phải gọi một tool của chúng hoặc `sys.ask_missing_info`.
-- Chạy trên toàn bộ val (225 và 301 mẫu). Lượt LLM đầu tất định, nên mẫu được hỏi lại có điểm gốc đúng bằng điểm của dự đoán rỗng, còn mẫu không được hỏi lại trùng lượt gốc: 95/95 và 88/88 mẫu chung với `40`/`41` ra cùng call và cùng hash.
-
-| | hỏi lại | val_random | val_app |
-| --- | --- | --- | --- |
-| `nudge` (`74`/`75`) | 8 / 20 mẫu | +0,00 | +0,33 |
-| `force` (`76`/`77`) | 8 / 20 mẫu | −2,22 | +1,00 |
-
-- Được nhắc thì mô hình gần như luôn dừng lại lần nữa (15/16 ca "làm" ở val_app). Bị ép gọi thì ở val_app chỉ 3/16 ca "làm" được điểm; 8 ca chuyển sang hỏi lại, 5 ca có gọi nhưng vẫn 0 điểm. Ở val_random, 5 mẫu gold rỗng bị phá. Mô hình dừng không phải vì thiếu một cú hích: nó không đọc được schema của app chưa thấy. Hướng sửa là dạy trên nhiều app hơn (đề xuất 5).
-
-**Mồi tên riêng cho PhoWhisper-ft (configs 29_\*-hint, 78, 79): lợi nhỏ, chưa chắc**
-
-| 100 mẫu chung với `54`/`55` | WER | thực thể đúng hệt | đầu-cuối với agent `40` | ASR giây/mẫu |
-| --- | --- | --- | --- | --- |
-| val_random (`54` → `78`) | 11,1 → 11,2 | 69,2 → 71,8 | 51,8 → 52,7 (+0,9, 95% [−1,3; +3,5]) | 0,49 → 1,02 |
-| val_app (`55` → `79`) | 12,0 → 11,6 | 78,1 → 75,0 | 32,5 → 34,0 (+1,5, 95% [−0,8; +4,5]) | 0,58 → 1,10 |
-
-Mồi đổi 24 và 33 bản chép trên 100; mỗi tập 3 mẫu tốt lên, 1 mẫu tệ đi. Có mồi thì mỗi mẫu chạy lẻ nên ASR chậm gấp đôi, vẫn khoảng 1 giây. Cần chạy `54`/`55` trên toàn bộ val để so 526 mẫu trước khi đổi bản nộp.
-
-**Độ trễ và giới hạn thời gian (config 95)**
-
-- Bản nộp `91` chạy tuần tự (`workers: 1`) trên 200 mẫu public ngẫu nhiên: p50 3,95 giây, p95 7,21, chậm nhất 10,09 (gồm ASR lấy từ cache). Mỗi lượt LLM trung bình 1,07 giây, chậm nhất 3,73; nhiều nhất 8 lượt một mẫu.
-- Cùng 200 mẫu đó khi `91` chạy 8 mẫu song song: p95 27,6, chậm nhất 46,9, có 8 mẫu quá 30 giây. Hai lượt ra cùng call ở 200/200 mẫu. Mẫu quá 30 giây là do chờ nhau, không phải do sinh dài.
-- `agent.time_budget` (giây mỗi mẫu, tính cả ASR): trước mỗi lượt LLM còn dưới `min_step_sec` thì dừng, mỗi lượt chỉ được phần còn lại và không thử lại; call đã gọi vẫn được nộp. Khi chạy tuần tự nó không cắt mẫu nào. Chỉ nên bật trong config chạy Docker, không đặt trong `base.yaml`, vì các lượt đo 8 worker sẽ bị cắt và lệch so với kết quả cũ.
-
-**Luật viết tay sửa tham số call ghi (`src/lifemate/fixes.py`, configs 88, 89, 96-98)**
-
-Những chỗ mô hình 4B hay sai mà đọc được thẳng từ lời nói thì để mã làm, ở tầng D, trước khi call chạy. Mỗi luật là một cờ trong `guards:`, mặc định tắt.
-
-| Luật | Làm gì | Ví dụ trên val |
-| --- | --- | --- |
-| `clock_fix` | Ngày giờ ISO của call ghi lệch ngày giờ nói ra: sai sáng/chiều, hoặc lời chỉ có một giờ, một ngày mà call khác | "9 giờ kém 15 tối mai" ra 18:45 → 20:45 |
-| `money_k` | Số tiền VND dưới 1.000 nhân 1.000 (trừ quy đổi ngoại tệ) | ASR "bốn mươi hai nhìn" ra 42 → 42.000 |
-| `span_min` | Tham số phút khi lời có "từ A tới B" | "từ bảy rưỡi tới tám giờ mười": 60 → 40 |
-| `ask_missing` | Hỏi lại thay vì bịa: số tiền khi lời chỉ nói "chút tiền", giờ hẹn khi không ai nói giờ | "chuyển ví cho Minh chút tiền": 100.000 → hỏi lại |
-| `pick_one` | "Mấy gói … hủy bớt một gói thôi": hỏi lại mục nào thay vì chọn bừa | |
-
-- Bộ đọc mới hiểu buổi đứng trước giờ ("tối mai bảy giờ"), "kém", câu tự sửa ("chín giờ, à nhầm, chín rưỡi"), "thứ ba, hôm hai chín", "chủ nhật mười một tháng mười", tuần tính từ thứ Hai như bảng thời gian. Trên call gold của cả train, lời chỉ có một ngày thì ngày gold trùng ở 346/351 tham số chính, chỉ có một giờ thì 151/151.
-- Không đụng giá trị có nguồn: có trong lịch sử hay kết quả tool (kể cả giờ viết trong tin nhắn, ghi chú), hay tính được một bước từ đó (`numbers.derive`). Không sửa khi lời có dời theo thời lượng ("trước 15 phút", "hai tiếng sau"), mốc khác ("hôm đó", "đúng giờ", "kịp bảy giờ", "trước mười một giờ").
-- Bật mọi luật rồi chạy call gold của cả 1.545 mẫu train: không call nào đổi, state không đổi (`tests/test_fixes.py`).
-- Câu hỏi lại được hoãn tới khi agent xong, và call bị hoãn trả `ok: true` kèm ghi chú. Gửi ngay thì môi trường trả `waiting_for_user`, còn trả `ok: false` thì agent SFT cũng dừng luôn, bỏ phần còn lại (train_0352, public_0033 mất lệnh đặt báo thức). Cái giá: ở train_1296 agent làm tiếp bằng một lệnh tắt đèn thừa (điểm vẫn 0 như trước).
-
-Chạy thật trên toàn bộ val, ghép cặp với cùng mô hình `qwen3-4b-sft`:
-
-| | không luật | có luật | hiệu | tốt lên / tệ đi |
-| --- | --- | --- | --- | --- |
-| val_random, nghe đúng (`86` → `88`) | 59,17 | 61,24 | +2,07 ± 0,93 | 5 / 0 |
-| val_app, nghe đúng (`87` → `89`) | 47,58 | 48,25 | +0,66 ± 0,47 | 2 / 0 |
-| val_random, PhoWhisper-ft có mồi (`78` → `96`) | 51,95 | 53,29 | +1,33 ± 0,77 | 3 / 0 |
-| val_app, PhoWhisper-ft có mồi (`79` → `97`) | 36,15 | 36,48 | +0,33 ± 0,33 | 1 / 0 |
-
-- Ngoài các mẫu luật nổ, mọi mẫu khác ra đúng call cũ: lượt LLM tất định, luật không đổi gì thì không có gì khác. Vì vậy 6 mẫu có hỏi lại được chạy lại riêng với cách trả `ok: true` rồi ghép vào (`88c`, `96c`, `97c`); chỉ train_0352 đổi, 0 → 1.
-- Lợi nhỏ (khoảng +1 điểm) nhưng không mẫu nào tệ đi. Luật được dựng sau khi xem lỗi của chính các tập val này, nên trên public có thể ít hơn. Trên dự đoán public của `91`, luật nổ ở khoảng 14/634 mẫu; đã đọc từng chỗ và siết luật đến khi những chỗ còn lại hợp lý hoặc nằm ở mẫu ASR đã hỏng sẵn ("mỗi cái một vé thôi" là số lượng, "bán bớt một trăm cổ" không phải chọn một trong nhiều, giờ nhắc tính từ thời gian nấu không bị sửa).
-- `98` là bản nộp `91` cộng các luật này, 7 mẫu có hỏi lại chạy lại như trên (`98c`) rồi ghép: file nộp hợp lệ, khác `91` ở 11/634 mẫu. 5 mẫu sửa tham số (báo thức "năm rưỡi sáng mai" 17:30 → 05:30, "bảy giờ kém mười lăm sáng mai" 07:45 → 06:45, hai ngày "chiều nay", "trưa nay" bị lệch, "ba trăm rưỡi" 350 → 350.000), 6 mẫu hỏi lại (ba câu "ít tiền", "mai gọi mình dậy" không có giờ, hai mẫu ASR hỏng). `pick_one` từng nổ nhầm ở "con mở một cái thôi" (mở mới, không chọn trong cái có sẵn); nay cần động từ hủy, tắt, xoá, bỏ, dừng đứng trước. p95 27,6 giây với 8 mẫu chạy cùng lúc, như `91`.
-- Đã thử mà không dùng: `id_guard: block` chạy lại offline trên 4 lượt trên đổi 1/1.052 mẫu.
 
 ## 9. Mô hình và giấy phép
 

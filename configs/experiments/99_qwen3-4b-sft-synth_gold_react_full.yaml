@@ -1,0 +1,6 @@
+# Như 86 (công thức của 40: LoRA r=16, 1 epoch, seed 0, bf16 ở máy nhà) nhưng dữ liệu SFT thêm 600 mẫu app tổng hợp kiểu CRUD
+# (`scripts/build_sft.py --synth 600`, src/lifemate/synth/). Cả val_random: so ghép cặp với 86.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-synth}

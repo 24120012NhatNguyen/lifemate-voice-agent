@@ -15,12 +15,17 @@ Config có `agent.calc: true`: trước mỗi call ghi có giá trị không nó
 --asr-keep-entities chỉ dùng bản chép đó khi mọi giá trị chuỗi người dùng nói ra trong call gold vẫn còn nguyên văn
 trong nó: nếu không, đáp án đòi một tên mà bản chép đã mất và mô hình học đoán (docs/BASELINE.md mục 8).
 
+--synth N thêm N mẫu dùng app tổng hợp kiểu CRUD (roadmap đề xuất 5, src/lifemate/synth/): mỗi mẫu mượn ngữ cảnh một
+mẫu của tập đang dựng, cài thêm 1 đến 3 app tổng hợp với tên tool và tham số ngẫu nhiên, và yêu cầu cuối nhắm vào
+chúng; gold chạy thật trên môi trường của app tổng hợp nên kết quả tool và state_hash là thật.
+
     .venv/bin/python scripts/build_sft.py
     .venv/bin/python scripts/build_sft.py --rename 0.5 --out sft/train_rename.jsonl
     .venv/bin/python scripts/build_sft.py --drop-heldout --out sft/train_drop.jsonl
     .venv/bin/python scripts/build_sft.py --subset all --out sft/train_full.jsonl   (bản nộp: không còn tập đo sạch)
     .venv/bin/python scripts/build_sft.py --asr-config configs/experiments/54_qwen3-4b-sft_phowhisper-large-ft_react.yaml \
         --out sft/train_asrmix.jsonl
+    .venv/bin/python scripts/build_sft.py --synth 600 --out sft/train_synth.jsonl
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ import re
 import sys
 from collections import Counter
 
-from lifemate import config, context, data, splits
+from lifemate import config, context, data, splits, synth
 from lifemate.agent.agents import CALC, ReactJSON
 from lifemate.asr.base import run_asr
 from lifemate.asr.metrics import entity_spans, norm
@@ -227,8 +232,9 @@ def calc_steps(sample: dict, said: str, specs: dict) -> dict[int, list[str]]:
 
 
 def conversation(agent: ReactJSON, sample: dict, transcript: dict, renamer: Renamer | None,
-                 calcs: dict[int, list[str]] | None = None) -> list[dict]:
-    specs = rules = None
+                 calcs: dict[int, list[str]] | None = None, specs: dict | None = None) -> list[dict]:
+    """specs: catalog thay cho catalog train (mẫu tổng hợp mang theo app của nó)."""
+    rules = None
     if renamer:
         orig = data.tool_specs(SPLIT)
         specs = {renamer.tool[n]: renamer.spec(n, t) for n, t in orig.items()}
@@ -260,6 +266,7 @@ def main(argv=None):
                     help="bản chép ASR làm mất thực thể của call gold thì dùng chữ đúng cho mẫu đó")
     ap.add_argument("--subset", default=SUBSET, choices=[SUBSET, "all"],
                     help="all: cả 1.545 mẫu train, để huấn luyện bản nộp sau khi đã chọn công thức trên train_rest")
+    ap.add_argument("--synth", type=int, default=0, help="thêm N mẫu dùng app tổng hợp (src/lifemate/synth/)")
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--limit", type=int, default=None)
     a = ap.parse_args(argv)
@@ -311,6 +318,17 @@ def main(argv=None):
             stats["bước sys.calc"] += sum(map(len, (calcs or {}).values()))
             f.write(json.dumps({"id": s["id"], "renamed": renamer is not None, "asr": use_asr, "messages": msgs},
                                ensure_ascii=False) + "\n")
+        hosts = [without_heldout(s) for s in pool if not heldout_in_history(s)] if a.drop_heldout else pool
+        for s in synth.generate(hosts, a.synth, seed=a.seed) if a.synth else []:
+            if synth.replay(s, cfg.get("guards")):
+                stats["bỏ: mẫu tổng hợp phát lại lệch"] += 1
+                continue
+            msgs = conversation(agent, s, synth.transcript(s), None, specs=synth.specs(s))
+            calls = s["label"]["tool_calls"]
+            stats["mẫu tổng hợp"] += 1
+            stats[f"tổng hợp: {s['synth']['kind']}"] += 1
+            stats["lượt assistant"] += len(calls) + 1
+            f.write(json.dumps({"id": s["id"], "synth": s["synth"]["kind"], "messages": msgs}, ensure_ascii=False) + "\n")
     print(json.dumps(dict(stats), ensure_ascii=False), "→", out)
 
 

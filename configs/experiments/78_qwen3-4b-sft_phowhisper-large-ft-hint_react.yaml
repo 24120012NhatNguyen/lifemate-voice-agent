@@ -1,6 +1,0 @@
-# Như 54 với bản chép có mồi tên riêng (29_asr_phowhisper-large-ft-hint chạy trước); so ghép cặp với 54.
-extends: ../base.yaml
-subset: val_random
-asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16, hint: profile_history}
-agent:
-  llm: {model: models/qwen3-4b-sft}

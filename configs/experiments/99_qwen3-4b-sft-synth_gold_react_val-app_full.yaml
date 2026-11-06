@@ -1,0 +1,5 @@
+# Như 99 val_random trên cả val_app: app tổng hợp có làm mô hình đọc schema app chưa thấy tốt hơn không (so ghép cặp với 87).
+extends: ../base.yaml
+subset: val_app
+agent:
+  llm: {model: models/qwen3-4b-sft-synth}

@@ -1,0 +1,5 @@
+# Như 99 val_random với seed 2, huấn luyện trên Kaggle T4 (fp16, `kaggle/run_sft.py synth-seed2`), gộp và chấm ở máy nhà.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft-synth-seed2}

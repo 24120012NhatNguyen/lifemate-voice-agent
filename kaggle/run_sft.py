@@ -40,6 +40,11 @@ EXPS = {
     # máy tính ẩn sys.calc (src/lifemate/numbers.py): dữ liệu dựng bằng config 70, đánh giá bằng configs 70-73, 93
     "calc": ("train_calc.jsonl", []),                          # như 40, chèn bước sys.calc ở 64 mẫu train_rest
     "full-calc": ("train_full_calc.jsonl", []),                # như full, có sys.calc: bản nộp nếu 70-73 thắng
+    # app tổng hợp kiểu CRUD (src/lifemate/synth/, build_sft.py --synth 600): đánh giá bằng configs 99_*
+    "synth": ("train_synth.jsonl", []),                        # như 40, thêm 600 mẫu app tổng hợp
+    "synth-seed1": ("train_synth.jsonl", ["--seed", "1"]),     # seed thứ hai khi hiệu dưới 3 điểm
+    "synth-seed2": ("train_synth.jsonl", ["--seed", "2"]),     # seed 2, 3: so được với seed1-3 không synth (80-85)
+    "synth-seed3": ("train_synth.jsonl", ["--seed", "3"]),
 }
 
 

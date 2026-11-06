@@ -7,15 +7,6 @@
     id_sources         [turn, history, utterance]   HTML gốc chỉ có [turn]
     id_harvest         html | all       html: chỉ khoá id, merchant_id; all: mọi khoá id / *_id
     dup_guard          off | warn | block   gọi lại y hệt một call đã chạy
-    clock_fix          true | false     ngày giờ ISO lệch ngày / giờ nói ra (sai sáng chiều, "9 giờ kém 15 tối") (fixes.py)
-    money_k            true | false     số tiền VND dưới 1.000 nhân 1.000 ("hai trăm", ASR mất "nghìn")
-    span_min           true | false     tham số phút = hiệu hai giờ trong "từ 7 rưỡi tới 8 giờ 10"
-    ask_missing        true | false     số tiền "chút tiền" hay giờ hẹn không có nguồn: hỏi lại thay vì chạy
-    pick_one           true | false     "hủy bớt một gói thôi": hỏi lại mục nào thay vì chọn bừa
-
-Câu hỏi lại của ask_missing, pick_one được hoãn tới `finish()` (runner gọi khi agent xong), để agent làm nốt các phần
-đủ thông tin như luật 9 của prompts/rules/verified.md; gửi ngay thì môi trường trả `waiting_for_user` và agent dừng luôn.
-Call bị hoãn trả `ok: true` kèm ghi chú: trả `ok: false` thì agent cũng dừng (train_0352, public_0033).
 
 Chế độ `warn` vẫn chạy call và chèn cảnh báo vào kết quả cho agent; `block` không chạy.
 """
@@ -25,7 +16,7 @@ import json
 import re
 from datetime import datetime
 
-from . import data, fixes
+from . import data
 
 DEFAULTS = {
     "validate": True,
@@ -35,18 +26,11 @@ DEFAULTS = {
     "id_sources": ["turn", "history", "utterance"],
     "id_harvest": "all",
     "dup_guard": "warn",
-    "clock_fix": False,
-    "money_k": False,
-    "span_min": False,
-    "ask_missing": False,
-    "pick_one": False,
 }
-FIX_RULES = ("clock_fix", "money_k", "span_min")
 
 
 class GuardedEnv:
-    def __init__(self, env, split: str, sample: dict, transcript: str = "", turns: dict | None = None, **cfg):
-        """turns: bản chép các lượt user trước (ASR); không có thì lấy lời gold trong history."""
+    def __init__(self, env, split: str, sample: dict, transcript: str = "", **cfg):
         self.env = env
         self.split = split
         self.sample = sample
@@ -59,20 +43,11 @@ class GuardedEnv:
         self.seen_calls: set[str] = set()
         self.log: list[dict] = []  # mỗi lần agent đề nghị một call: đề nghị, sau chuẩn hoá, quyết định, kết quả
         self.utterance = transcript
-        self.now = sample["context"]["current_time"]
-        past = list(turns.values()) if turns else [t.get("audio_text", "") for t in sample.get("history", []) if t.get("role") == "user"]
-        self.said_all = " ".join([transcript, *past])
-        self.seen: set = set()  # mọi chuỗi, số đã thấy: giá trị có nguồn thì luật fixes không đụng
-        self.asked: set[str] = set()  # tool đã hỏi lại (do luật hay do LLM tự gọi sys.ask_missing_info)
-        self.llm_asked: set[str] = set()
-        self.pending: list[dict] = []  # câu hỏi lại của luật, gửi ở finish()
-        self.picked = False
         for turn in sample.get("history", []):
             for r in turn.get("tool_results") or []:
                 self._harvest(r, self.ids_history)
             for c in turn.get("tool_calls") or []:
                 self._harvest(c.get("arguments"), self.ids_history)
-            fixes.strings([turn.get("tool_results"), turn.get("tool_calls"), turn.get("text")], self.seen)
 
     # -- thu ID và sự kiện đã thấy ------------------------------------------------------------
     def _harvest(self, obj, into: set):
@@ -112,10 +87,6 @@ class GuardedEnv:
                     elif re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", v):
                         v += "+07:00"
                     clean[p] = v
-        self.fix_notes = []
-        if any(self.cfg[r] for r in FIX_RULES) and self.specs.get(name, {}).get("kind") == "write":
-            clean, self.fix_notes = fixes.fix_args(name, clean, self.specs[name], self.utterance, self.now, self.seen,
-                                                   {r: self.cfg[r] for r in FIX_RULES})
         if self.cfg["calendar_duration"] and name == "calendar.update_event":
             ev = clean.get("event_id")
             if ev in self.events and "start" in clean and "end" not in clean:
@@ -131,8 +102,6 @@ class GuardedEnv:
         rec = {"name": name, "proposed": args}
         clean = self.normalize(name, args)
         rec["arguments"] = clean
-        if self.fix_notes:
-            rec["fixes"] = self.fix_notes
         warnings = []
 
         if self.cfg["validate"]:
@@ -141,24 +110,6 @@ class GuardedEnv:
                 rec.update(decision="chặn: sai schema", result={"ok": False, "error": v.get("error")})
                 self.log.append(rec)
                 return {"ok": False, "error": v.get("error"), "note": "call chưa chạy, không tính vào bài nộp"}
-
-        ask = self._ask_instead(name, clean)
-        if ask:  # trả ok: true, vì gặp ok: false agent SFT dừng luôn mà bỏ dở các phần còn lại
-            if name in self.asked:  # LLM gọi lại call đã được đổi thành câu hỏi: không chạy, không hỏi lần hai
-                obs = {"ok": True, "note": f"đã ghi câu hỏi lại về {', '.join(ask)} của {name}; không gọi lại tool này"}
-                rec.update(decision="chặn: đã hỏi lại", result=obs)
-                self.log.append(rec)
-                return obs
-            self.asked.add(name)
-            self.pending.append({"tool_name": name, "params": ask})
-            obs = {"ok": True, "note": f"người dùng chưa nói {', '.join(ask)} cho {name}: call chưa chạy, câu hỏi lại sẽ "
-                                       "được gửi ở cuối; làm tiếp các phần còn lại của yêu cầu"}
-            rec.update(decision=f"hoãn: hỏi lại {', '.join(ask)} ở cuối", result=obs)
-            self.log.append(rec)
-            return obs
-        if name == "sys.ask_missing_info" and isinstance(clean.get("tool_name"), str):
-            self.asked.add(clean["tool_name"])
-            self.llm_asked.add(clean["tool_name"])
 
         sig = json.dumps([name, clean], sort_keys=True, ensure_ascii=False)
         if self.cfg["dup_guard"] != "off" and sig in self.seen_calls:
@@ -189,35 +140,11 @@ class GuardedEnv:
         obs = self.env.call(name, clean)
         self.seen_calls.add(sig)
         self._harvest(obs, self.ids_turn)
-        fixes.strings([obs, clean], self.seen)
         rec.update(decision="chạy" + (" (cảnh báo)" if warnings else ""), result=obs, warnings=warnings)
         self.log.append(rec)
         if warnings:
             obs = {**obs, "warnings": warnings}
         return obs
-
-    def finish(self):
-        """Gửi các câu hỏi lại đã hoãn, trừ khi LLM đã tự hỏi về cùng tool. Gọi một lần khi agent xong."""
-        for q in self.pending:
-            if q["tool_name"] in self.llm_asked:
-                continue
-            obs = self.env.call("sys.ask_missing_info", q)
-            self.log.append({"name": "sys.ask_missing_info", "proposed": q, "arguments": q,
-                             "decision": "chạy (hỏi lại đã hoãn)", "result": obs, "warnings": []})
-        self.pending = []
-
-    def _ask_instead(self, name: str, clean: dict) -> list[str]:
-        spec = self.specs.get(name, {})
-        if name == "sys.ask_missing_info" or spec.get("kind") != "write":
-            return []
-        if self.cfg["pick_one"] and not self.picked:
-            ask = fixes.pick_one(name, clean, spec, self.utterance)
-            if ask:
-                self.picked = True
-                return ask
-        if self.cfg["ask_missing"]:
-            return fixes.missing(name, clean, spec, self.said_all, self.now, self.seen, final=self.utterance)
-        return []
 
     def validate(self, name, args):
         return self.env.validate(name, self.normalize(name, args))

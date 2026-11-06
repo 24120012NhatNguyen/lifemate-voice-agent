@@ -1,3 +1,0 @@
-# Như 96 trên cả val_app; so với 79.
-extends: 79_qwen3-4b-sft_phowhisper-large-ft-hint_react_val-app.yaml
-guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}

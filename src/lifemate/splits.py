@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import random
-from functools import lru_cache
 
 from . import data
 
@@ -27,12 +26,6 @@ def _bucket(sample_id: str) -> int:
 
 def _apps_used(s: dict) -> set[str]:
     return {c["name"].split(".", 1)[0] for c in s.get("label", {}).get("tool_calls", [])}
-
-
-@lru_cache(maxsize=None)
-def known_apps(subset: str = "all") -> frozenset[str]:
-    """App có trong call gold của một tập train: những app mà mô hình SFT trên tập đó đã thấy được dùng."""
-    return frozenset(a for s in select("train", subset) for a in _apps_used(s))
 
 
 def group(s: dict) -> str:

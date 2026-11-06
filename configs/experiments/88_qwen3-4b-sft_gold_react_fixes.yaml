@@ -1,3 +1,0 @@
-# Như 40 trên cả val_random, bật các luật sửa tham số call ghi (src/lifemate/fixes.py); so ghép cặp với 86 (40 cả tập).
-extends: 40_qwen3-4b-sft_gold_react.yaml
-guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}

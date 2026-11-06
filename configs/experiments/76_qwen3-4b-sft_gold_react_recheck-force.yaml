@@ -1,6 +1,0 @@
-# Như 74 nhưng bắt gọi một tool của app chưa thấy (hoặc sys.ask_missing_info) thay vì nhắc rồi để mô hình tự chọn.
-extends: ../base.yaml
-subset: val_random
-agent:
-  llm: {model: models/qwen3-4b-sft}
-  recheck_stop: {mode: force, known: train_rest}
