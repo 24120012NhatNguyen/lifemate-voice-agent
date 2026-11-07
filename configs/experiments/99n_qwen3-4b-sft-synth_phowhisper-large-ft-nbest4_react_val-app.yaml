@@ -1,0 +1,4 @@
+# Như 99n trên val_app: so ghép cặp với 55n. Đây là số gần public nhất có được trước khi train bản nộp full-synth.
+extends: 55n_qwen3-4b-sft_phowhisper-large-ft-nbest4_react_val-app.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-synth}

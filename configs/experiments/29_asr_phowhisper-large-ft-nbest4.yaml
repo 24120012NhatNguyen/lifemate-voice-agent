@@ -1,0 +1,5 @@
+# PhoWhisper-ft (v1) beam 4, giữ 4 bản tốt nhất; bản chính là tia đầu, các bản khác chữ được lưu ở alts (tối đa 3).
+# batch 2: beam 4 × 4 bản ở batch 8 cần hơn 15 GB (cache cross-attention của 32 lớp). Điền cache cho 54n và 54b.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 4, n_best: 4, batch_size: 2}
+agent: {name: none}

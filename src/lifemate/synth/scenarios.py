@@ -7,6 +7,8 @@ của train (prompts/rules/verified.md):
 - ID chỉ lấy từ kết quả đọc hoặc lịch sử: tool list gọi với {}, tool search với query là đúng tên người dùng nói;
   ID đã có trong lịch sử thì dùng lại, không đọc lại.
 - Thiếu tham số bắt buộc hoặc tên gọi khớp nhiều mục: làm xong phần đủ thông tin, gọi `sys.ask_missing_info` ở cuối.
+- Hai mục cùng tên gốc ("Mích lớn", "Mích nhỏ") mà người dùng nói đủ chi tiết ("bé Mích lớn"): đọc rồi làm, không hỏi
+  (`pick_detail`; đối trọng của `ask_ambiguous` để mô hình không hỏi lại thừa, docs/BASELINE.md mục synth).
 - Không gọi gì khi người dùng bỏ yêu cầu, khi yêu cầu nhắm vào app chưa cài, hoặc chỉ là lời cảm ơn.
 - Câu điều kiện: đọc để kiểm tra trước, điều kiện không thoả thì dừng. Tự sửa giữa câu: chỉ làm phần chốt cuối.
 - Nhiều việc trong một câu: làm theo đúng thứ tự nói.
@@ -27,7 +29,8 @@ from . import apps, vi
 from .domains import DOMAINS
 
 KINDS = {"create": 18, "write": 20, "read": 8, "hist_list": 7, "hist_create": 5, "ask_missing": 8, "ask_ambiguous": 6,
-         "cancel": 3, "unsupported": 3, "thanks": 2, "conditional": 5, "correction": 5, "multi": 10, "not_found": 2}
+         "pick_detail": 6, "cancel": 3, "unsupported": 3, "thanks": 2, "conditional": 5, "correction": 5, "multi": 10,
+         "not_found": 2}
 LIST_SAY = ["cho {p} xem danh sách {noun}", "kiểm tra giúp {p} {noun} hiện có", "{noun} của {p} có những gì",
             "xem {noun} giúp {p}", "liệt kê {noun} cho {p}"]
 SEARCH_SAY = ["tìm {obj}", "tìm giúp {p} {obj}", "xem có {obj} không"]
@@ -251,9 +254,11 @@ class Builder:
         return t, said
 
     # -- ý định ------------------------------------------------------------------------------------------
-    def create(self, inst: dict, short: str, omit: bool = False, fix: bool = False, ambiguous: bool = False) -> Intent:
+    def create(self, inst: dict, short: str, omit: bool = False, fix: bool = False, ambiguous: bool = False,
+               detail: bool = False) -> Intent:
         """Tạo mới. omit: bỏ một tham số bắt buộc rồi hỏi lại; fix: nói nhầm một giá trị rồi sửa;
-        ambiguous: mục cha gọi bằng tên khớp hai mục, đọc xong thì hỏi lại ID."""
+        ambiguous: mục cha gọi bằng tên khớp hai mục, đọc xong thì hỏi lại ID;
+        detail: mục cha có mục khác cùng tên gốc nhưng người dùng nói đủ tên, đọc xong thì làm (không hỏi)."""
         t, rng = self.dtool(inst, short), self.rng
         cn, pm, full = t.coll, inst["exec"][short]["params"], f"{inst['app']}.{short}"
         cs = apps.domain(inst).colls[cn]
@@ -269,14 +274,19 @@ class Builder:
         vals = {fn: self.value(inst, cn, fn) for fn in said}
         spoken = {fn: v.spoken for fn, v in vals.items()}
         amb = None
-        if ambiguous:
+        if ambiguous or detail:
             refs = [fn for fn in said if cs.fields[fn].kind == "ref" and not apps.domain(inst).colls[cs.fields[fn].ref].derived]
             if not refs:
                 raise Skip("không có mục cha để gây nhập nhằng")
             fn = rng.choice(refs)
             base = self.make_ambiguous(inst, cs.fields[fn].ref, vals[fn].item)
-            spoken[fn], said = self.obj(inst, cs.fields[fn].ref, None, base)
-            amb = (fn, said)
+            if detail:  # tên đầy đủ sau khi đổi ("Mích lớn"): gold đọc bằng tên đó rồi dùng ID
+                phrase, full_said = self.obj(inst, cs.fields[fn].ref, vals[fn].item)
+                spoken[fn] = phrase
+                vals[fn] = Val(vals[fn].gold, phrase, vals[fn].item, full_said)
+            else:
+                spoken[fn], said = self.obj(inst, cs.fields[fn].ref, None, base)
+                amb = (fn, said)
         if fix:
             cands = [fn for fn in said if cs.fields[fn].kind in ("datetime", "date", "int", "money", "enum")]
             if not cands:
@@ -306,8 +316,9 @@ class Builder:
         return Intent(core, emit)
 
     def write(self, inst: dict, short: str, item: dict | None = None, omit: bool = False, fix: bool = False,
-              ambiguous: bool = False, anaphor: bool = False, missing_key: str | None = None) -> Intent:
-        """Sửa, xoá hoặc động từ riêng trên một mục gọi bằng tên. missing_key: gọi một tên không có (đọc rồi dừng)."""
+              ambiguous: bool = False, anaphor: bool = False, missing_key: str | None = None, detail: bool = False) -> Intent:
+        """Sửa, xoá hoặc động từ riêng trên một mục gọi bằng tên. missing_key: gọi một tên không có (đọc rồi dừng).
+        detail: có mục khác cùng tên gốc nhưng người dùng nói đủ tên ("Mích lớn"): đọc rồi làm, không hỏi."""
         t, rng = self.dtool(inst, short), self.rng
         ex = inst["exec"][short]
         cn, pm, full = t.coll, ex["params"], f"{inst['app']}.{short}"
@@ -339,11 +350,15 @@ class Builder:
         amb_key = None
         if missing_key is not None:
             phrase, said_key = self.obj(inst, cn, None, missing_key)
-        elif ambiguous:
+        elif ambiguous or detail:
             if cs.derived:
                 raise Skip("nhập nhằng chỉ dựng cho mục có tên riêng")
-            amb_key = self.make_ambiguous(inst, cn, item)
-            phrase, said_key = self.obj(inst, cn, None, amb_key)
+            base = self.make_ambiguous(inst, cn, item)
+            if detail:
+                phrase, said_key = self.obj(inst, cn, item)  # tên đầy đủ sau khi đổi
+            else:
+                amb_key = base
+                phrase, said_key = self.obj(inst, cn, None, amb_key)
         elif anaphor or not self.unique(inst, cn, item):
             phrase, said_key = rng.choice(ANAPHOR), ""
         else:
@@ -463,6 +478,8 @@ class Builder:
             return self.final([self.any_intent(inst, omit=True)])
         if kind == "ask_ambiguous":
             return self.final([self.any_intent(inst, ambiguous=True)])
+        if kind == "pick_detail":
+            return self.final([self.any_intent(inst, detail=True)])
         if kind == "correction":
             return self.final([self.any_intent(inst, fix=True)])
         if kind == "not_found":

@@ -1,0 +1,10 @@
+# Config chạy trong Docker (nấc 6): bản nộp 98 (= 91 cộng luật viết tay) chạy tuần tự, có giới hạn thời gian.
+# docker/predict.sh ghi đè split, asr.model, agent.llm.model và base_url bằng --set; đổi bản nộp bằng biến CONFIG.
+# workers 1: mỗi mẫu chạy một mình, nên thời gian mỗi mẫu là thời gian thật và time_budget không bao giờ cắt vì chờ
+# nhau. Tuần tự trên RTX 5060 Ti chậm nhất khoảng 10 giây, nên 25 giây chỉ cắt mẫu bất thường và còn 5 giây biên
+# dưới luật 30 giây. Cắt theo đồng hồ là phần duy nhất không tất định, nên nó phải không bao giờ nổ ở mẫu thường.
+extends: experiments/98_submit_public_full_fixes.yaml
+subset: all
+workers: 1
+agent:
+  time_budget: 25

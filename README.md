@@ -108,6 +108,16 @@ Produce and check a submission file:
 .venv/bin/lifemate validate runs/<timestamp>_90_submit_public
 ```
 
+Build the offline submission image and run it the way the organisers will (writes `out/submission.jsonl`):
+
+```bash
+scripts/docker_build.sh
+```
+
+```bash
+docker run --rm --gpus all --network none -v ../data/lifemate:/data:ro -v "$PWD/out":/result lifemate:98
+```
+
 Run the tests (data-dependent tests skip when the data package is missing):
 
 ```bash
@@ -118,7 +128,8 @@ Run the tests (data-dependent tests skip when the data package is missing):
 
 ```
 app/          Streamlit app: best architecture, run comparison, live GPU jobs, roadmap, dataset browser
-configs/      base.yaml and one file per experiment (experiments/NN_name.yaml)
+configs/      base.yaml, docker.yaml (the submission) and one file per experiment (experiments/NN_name.yaml)
+docker/       Dockerfile, offline entrypoint predict.sh, pinned vLLM requirements
 docs/         PROPOSAL.md (architecture), BASELINE.md (how to run, every result), roadmap.yaml
 kaggle/       runner for LoRA SFT on Kaggle T4 x2 notebooks
 prompts/      agent prompt templates and tool-use rules
@@ -151,6 +162,8 @@ The detailed documents are in Vietnamese:
 - [docs/PROPOSAL.md](docs/PROPOSAL.md): pipeline architecture and plan.
 - [docs/BASELINE.md](docs/BASELINE.md): installation, running, adding a variant, and every experiment result.
 - [docs/roadmap.yaml](docs/roadmap.yaml): milestones and next proposals (also shown in the app).
+- [docs/METHOD.md](docs/METHOD.md): method description for the organisers.
+- [docs/SUBMISSION.md](docs/SUBMISSION.md): the Docker image, how to run it, and exact commands to rebuild every model.
 
 ## Contributing
 

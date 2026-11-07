@@ -1,0 +1,3 @@
+# Như 54g trên cả val_app; so với 55f.
+extends: 55f_qwen3-4b-sft_phowhisper-large-ft_react_val-app_full.yaml
+asr: {model: models/phowhisper-large-ft2}

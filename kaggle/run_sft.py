@@ -45,6 +45,9 @@ EXPS = {
     "synth-seed1": ("train_synth.jsonl", ["--seed", "1"]),     # seed thứ hai khi hiệu dưới 3 điểm
     "synth-seed2": ("train_synth.jsonl", ["--seed", "2"]),     # seed 2, 3: so được với seed1-3 không synth (80-85)
     "synth-seed3": ("train_synth.jsonl", ["--seed", "3"]),
+    # bản nộp với app tổng hợp: cả 1.545 mẫu train + 600 mẫu tổng hợp (build_sft.py --subset all --synth 600);
+    # đánh giá đầu-cuối bằng 99n_* (N-best) trước khi thay 98n
+    "full-synth": ("train_full_synth.jsonl", []),
 }
 
 

@@ -1,0 +1,6 @@
+# Bản nộp 98n với agent huấn luyện trên cả train + 600 mẫu app tổng hợp (kaggle/run_sft.py full-synth, dữ liệu
+# scripts/build_sft.py --subset all --synth 600 --out sft/train_full_synth.jsonl, gộp bằng scripts/merge_lora.py).
+# Chỉ dùng khi 99n/99n_val-app không tệ hơn 54n/55n ghép cặp và val_app tăng (text gold: +4,5 ± 1,0 qua 4 seed).
+extends: 98n_submit_public_full_fixes_nbest4.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-full-synth}

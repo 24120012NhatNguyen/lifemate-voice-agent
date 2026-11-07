@@ -1,0 +1,4 @@
+# Như 54n trên cả val_app; so với 55b và 55f.
+extends: 55f_qwen3-4b-sft_phowhisper-large-ft_react_val-app_full.yaml
+asr: {num_beams: 4, n_best: 4, batch_size: 2}
+agent: {show_alts: true}

@@ -1,0 +1,10 @@
+# Như configs/docker.yaml nhưng bản nộp là 98n (ASR N-best 4): tuần tự, time_budget 25 s tính cả ASR.
+# Chọn lúc dựng: `CONFIG=configs/docker-nbest.yaml TAG=lifemate:98n scripts/docker_build.sh` (image ghi ENV CONFIG),
+# hoặc lúc chạy: `docker run ... -e CONFIG=configs/docker-nbest.yaml lifemate:98`. Không đặt gì thì image vẫn chạy 98.
+# Độ trễ: pha 1 (ASR theo lô) chậm hơn greedy; ước lượng từ 64/65 (beam 4, batch 16): 0,6 → 2,3 s/mẫu trên RTX 5060 Ti,
+# với batch 2 và 4 bản có thể 3–4 s/mẫu, tức p99 cả mẫu khoảng 11–13 s thay cho 9,0 s. Chưa đo; Codex đo bằng docker_check.
+extends: experiments/98n_submit_public_full_fixes_nbest4.yaml
+subset: all
+workers: 1
+agent:
+  time_budget: 25

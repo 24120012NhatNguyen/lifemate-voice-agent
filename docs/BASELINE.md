@@ -10,7 +10,7 @@ Khung này để thử nhiều kiến trúc mà không sửa code: mỗi tầng 
 | A'. Hậu xử lý | `asr_post` | `strip_fillers`, `phonetic_entity_fix` | `src/lifemate/asr/post.py` |
 | B. Dựng ngữ cảnh | `agent.timetable`, `agent.schema`, `agent.history`, `agent.ledger` | bảng lịch 3 ngày hoặc 2 tuần; schema thô hoặc nén; sổ ghi lịch sử bật/tắt | `src/lifemate/context.py` |
 | C. Agent | `agent.name`, `agent.llm`, `agent.prompt`, `agent.rules` | `empty`, `oracle`, `react_json`, `native_tools`; LLM bất kỳ qua API chuẩn OpenAI | `src/lifemate/agent/` và `prompts/` |
-| D. Middleware | `guards.*` | validate, chuẩn hoá, bù `end` lịch, chặn ID (off, warn, block), chặn gọi trùng | `src/lifemate/guards.py` |
+| D. Middleware | `guards.*` | validate, chuẩn hoá, bù `end` lịch, chặn ID (off, warn, block), chặn gọi trùng; luật sửa tham số theo lời nói (`clock_fix`, `money_k`, `span_min`, `ask_missing`, `pick_one`) | `src/lifemate/guards.py`, `fixes.py` |
 | Đo | `subset`, `limit`, `repeats` | `val_random`, `val_app` (10 app giữ lại), `train_rest`, `all`; lặp để đo độ ổn định | `src/lifemate/splits.py`, `scoring.py` |
 
 `lifemate list` in ra mọi phương án đã đăng ký và trạng thái của chúng.
@@ -453,6 +453,65 @@ Công thức của v1 (PhoWhisper-large-ft greedy, rồi Qwen3-4B SFT seed 0), a
 - Không nộp `92` (`full-rename-all`) và `93` (`full-calc`): đổi tên và `sys.calc` đều không thắng trên `train_rest`.
 - Tab "Kiến trúc tốt nhất" của `app/compare.py` làm đúng các bước này từ `runs/` (gộp cả các git worktree nếu có): mỗi tầng một bảng xếp hạng, tổ hợp đang chọn, và bảng ghép có cột "mất do ASR".
 
+**Hỏi lại khi bước đầu dừng ở app chưa thấy (configs 74-77): không dùng**
+
+- Ở val_app, mọi ca "làm → đứng yên" đều là `stop` ngay bước đầu, không gọi tool nào: 10/100 với `41`, 13 với `drop` (`45`), 21 với `drop-rename-all` (`49`), tập sau chứa tập trước. Gỡ app giữ lại khỏi dữ liệu SFT không giảm lỗi này.
+- `agent.recheck_stop` hỏi lại một lần khi bước đầu là `stop` mà máy có app chưa từng được gọi trong tập `known`. `nudge` liệt kê tool của các app đó và để mô hình tự chọn lại. `force` ép lượt sau phải gọi một tool của chúng hoặc `sys.ask_missing_info`.
+- Chạy trên toàn bộ val (225 và 301 mẫu). Lượt LLM đầu tất định, nên mẫu được hỏi lại có điểm gốc đúng bằng điểm của dự đoán rỗng, còn mẫu không được hỏi lại trùng lượt gốc: 95/95 và 88/88 mẫu chung với `40`/`41` ra cùng call và cùng hash.
+
+| | hỏi lại | val_random | val_app |
+| --- | --- | --- | --- |
+| `nudge` (`74`/`75`) | 8 / 20 mẫu | +0,00 | +0,33 |
+| `force` (`76`/`77`) | 8 / 20 mẫu | −2,22 | +1,00 |
+
+- Được nhắc thì mô hình gần như luôn dừng lại lần nữa (15/16 ca "làm" ở val_app). Bị ép gọi thì ở val_app chỉ 3/16 ca "làm" được điểm; 8 ca chuyển sang hỏi lại, 5 ca có gọi nhưng vẫn 0 điểm. Ở val_random, 5 mẫu gold rỗng bị phá. Mô hình dừng không phải vì thiếu một cú hích: nó không đọc được schema của app chưa thấy. Hướng sửa là dạy trên nhiều app hơn (đề xuất 5).
+
+**Mồi tên riêng cho PhoWhisper-ft (configs 29_\*-hint, 78, 79): lợi nhỏ, chưa chắc**
+
+| 100 mẫu chung với `54`/`55` | WER | thực thể đúng hệt | đầu-cuối với agent `40` | ASR giây/mẫu |
+| --- | --- | --- | --- | --- |
+| val_random (`54` → `78`) | 11,1 → 11,2 | 69,2 → 71,8 | 51,8 → 52,7 (+0,9, 95% [−1,3; +3,5]) | 0,49 → 1,02 |
+| val_app (`55` → `79`) | 12,0 → 11,6 | 78,1 → 75,0 | 32,5 → 34,0 (+1,5, 95% [−0,8; +4,5]) | 0,58 → 1,10 |
+
+Mồi đổi 24 và 33 bản chép trên 100; mỗi tập 3 mẫu tốt lên, 1 mẫu tệ đi. Có mồi thì mỗi mẫu chạy lẻ nên ASR chậm gấp đôi, vẫn khoảng 1 giây. Cần chạy `54`/`55` trên toàn bộ val để so 526 mẫu trước khi đổi bản nộp.
+
+**Độ trễ và giới hạn thời gian (config 95)**
+
+- Bản nộp `91` chạy tuần tự (`workers: 1`) trên 200 mẫu public ngẫu nhiên: p50 3,95 giây, p95 7,21, chậm nhất 10,09 (gồm ASR lấy từ cache). Mỗi lượt LLM trung bình 1,07 giây, chậm nhất 3,73; nhiều nhất 8 lượt một mẫu.
+- Cùng 200 mẫu đó khi `91` chạy 8 mẫu song song: p95 27,6, chậm nhất 46,9, có 8 mẫu quá 30 giây. Hai lượt ra cùng call ở 200/200 mẫu. Mẫu quá 30 giây là do chờ nhau, không phải do sinh dài.
+- `agent.time_budget` (giây mỗi mẫu, tính cả ASR): trước mỗi lượt LLM còn dưới `min_step_sec` thì dừng, mỗi lượt chỉ được phần còn lại và không thử lại; call đã gọi vẫn được nộp. Khi chạy tuần tự nó không cắt mẫu nào. Chỉ nên bật trong config chạy Docker, không đặt trong `base.yaml`, vì các lượt đo 8 worker sẽ bị cắt và lệch so với kết quả cũ.
+
+**Luật viết tay sửa tham số call ghi (`src/lifemate/fixes.py`, configs 88, 89, 96-98)**
+
+Những chỗ mô hình 4B hay sai mà đọc được thẳng từ lời nói thì để mã làm, ở tầng D, trước khi call chạy. Mỗi luật là một cờ trong `guards:`, mặc định tắt.
+
+| Luật | Làm gì | Ví dụ trên val |
+| --- | --- | --- |
+| `clock_fix` | Ngày giờ ISO của call ghi lệch ngày giờ nói ra: sai sáng/chiều, hoặc lời chỉ có một giờ, một ngày mà call khác | "9 giờ kém 15 tối mai" ra 18:45 → 20:45 |
+| `money_k` | Số tiền VND dưới 1.000 nhân 1.000 (trừ quy đổi ngoại tệ) | ASR "bốn mươi hai nhìn" ra 42 → 42.000 |
+| `span_min` | Tham số phút khi lời có "từ A tới B" | "từ bảy rưỡi tới tám giờ mười": 60 → 40 |
+| `ask_missing` | Hỏi lại thay vì bịa: số tiền khi lời chỉ nói "chút tiền", giờ hẹn khi không ai nói giờ | "chuyển ví cho Minh chút tiền": 100.000 → hỏi lại |
+| `pick_one` | "Mấy gói … hủy bớt một gói thôi": hỏi lại mục nào thay vì chọn bừa | |
+
+- Bộ đọc mới hiểu buổi đứng trước giờ ("tối mai bảy giờ"), "kém", câu tự sửa ("chín giờ, à nhầm, chín rưỡi"), "thứ ba, hôm hai chín", "chủ nhật mười một tháng mười", tuần tính từ thứ Hai như bảng thời gian. Trên call gold của cả train, lời chỉ có một ngày thì ngày gold trùng ở 346/351 tham số chính, chỉ có một giờ thì 151/151.
+- Không đụng giá trị có nguồn: có trong lịch sử hay kết quả tool (kể cả giờ viết trong tin nhắn, ghi chú), hay tính được một bước từ đó (`numbers.derive`). Không sửa khi lời có dời theo thời lượng ("trước 15 phút", "hai tiếng sau"), mốc khác ("hôm đó", "đúng giờ", "kịp bảy giờ", "trước mười một giờ").
+- Bật mọi luật rồi chạy call gold của cả 1.545 mẫu train: không call nào đổi, state không đổi (`tests/test_fixes.py`).
+- Câu hỏi lại được hoãn tới khi agent xong, và call bị hoãn trả `ok: true` kèm ghi chú. Gửi ngay thì môi trường trả `waiting_for_user`, còn trả `ok: false` thì agent SFT cũng dừng luôn, bỏ phần còn lại (train_0352, public_0033 mất lệnh đặt báo thức). Cái giá: ở train_1296 agent làm tiếp bằng một lệnh tắt đèn thừa (điểm vẫn 0 như trước).
+
+Chạy thật trên toàn bộ val, ghép cặp với cùng mô hình `qwen3-4b-sft`:
+
+| | không luật | có luật | hiệu | tốt lên / tệ đi |
+| --- | --- | --- | --- | --- |
+| val_random, nghe đúng (`86` → `88`) | 59,17 | 61,24 | +2,07 ± 0,93 | 5 / 0 |
+| val_app, nghe đúng (`87` → `89`) | 47,58 | 48,25 | +0,66 ± 0,47 | 2 / 0 |
+| val_random, PhoWhisper-ft có mồi (`78` → `96`) | 51,95 | 53,29 | +1,33 ± 0,77 | 3 / 0 |
+| val_app, PhoWhisper-ft có mồi (`79` → `97`) | 36,15 | 36,48 | +0,33 ± 0,33 | 1 / 0 |
+
+- Ngoài các mẫu luật nổ, mọi mẫu khác ra đúng call cũ: lượt LLM tất định, luật không đổi gì thì không có gì khác. Vì vậy 6 mẫu có hỏi lại được chạy lại riêng với cách trả `ok: true` rồi ghép vào (`88c`, `96c`, `97c`); chỉ train_0352 đổi, 0 → 1.
+- Lợi nhỏ (khoảng +1 điểm) nhưng không mẫu nào tệ đi. Luật được dựng sau khi xem lỗi của chính các tập val này, nên trên public có thể ít hơn. Trên dự đoán public của `91`, luật nổ ở khoảng 14/634 mẫu; đã đọc từng chỗ và siết luật đến khi những chỗ còn lại hợp lý hoặc nằm ở mẫu ASR đã hỏng sẵn ("mỗi cái một vé thôi" là số lượng, "bán bớt một trăm cổ" không phải chọn một trong nhiều, giờ nhắc tính từ thời gian nấu không bị sửa).
+- `98` là bản nộp `91` cộng các luật này, 7 mẫu có hỏi lại chạy lại như trên (`98c`) rồi ghép: file nộp hợp lệ, khác `91` ở 11/634 mẫu. 5 mẫu sửa tham số (báo thức "năm rưỡi sáng mai" 17:30 → 05:30, "bảy giờ kém mười lăm sáng mai" 07:45 → 06:45, hai ngày "chiều nay", "trưa nay" bị lệch, "ba trăm rưỡi" 350 → 350.000), 6 mẫu hỏi lại (ba câu "ít tiền", "mai gọi mình dậy" không có giờ, hai mẫu ASR hỏng). `pick_one` từng nổ nhầm ở "con mở một cái thôi" (mở mới, không chọn trong cái có sẵn); nay cần động từ hủy, tắt, xoá, bỏ, dừng đứng trước. p95 27,6 giây với 8 mẫu chạy cùng lúc, như `91`.
+- Đã thử mà không dùng: `id_guard: block` chạy lại offline trên 4 lượt trên đổi 1/1.052 mẫu.
+
 ## 9. Mô hình và giấy phép
 
 | Mô hình | Tham số | Giấy phép | Ngày công bố | Ghi chú |
@@ -463,3 +522,43 @@ Công thức của v1 (PhoWhisper-large-ft greedy, rồi Qwen3-4B SFT seed 0), a
 | [khanhld/chunkformer-ctc-large-vie](https://huggingface.co/khanhld/chunkformer-ctc-large-vie) | 0,11 tỷ | **CC BY-NC 4.0** | 02/2025 | Phi thương mại: hỏi BTC trước khi đưa vào bài nộp |
 | [Qwen/Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) | 4,0 tỷ | Apache-2.0 | 07/2025 | |
 | Phonetic Modeling of Dialectal Variation in Vietnamese Speech ([arXiv 2605.24451](https://arxiv.org/abs/2605.24451)) | | | 05/2026 | Chưa công bố mã. Ý tưởng gộp âm theo phương ngữ có bản luật tay ở `phonetic_entity_fix` |
+
+## 10. Docker cho vòng private (nấc 6, 06/11/2026)
+
+Image `lifemate:98` chạy bản nộp `98` (PhoWhisper-large-ft, rồi Qwen3-4B SFT `full`, rồi middleware và luật viết tay) từ audio tới `submission.jsonl`, không cần mạng. Cách chạy, dựng lại mô hình và gói nộp BTC: [SUBMISSION.md](SUBMISSION.md); mô tả phương pháp: [METHOD.md](METHOD.md).
+
+```bash
+scripts/docker_build.sh
+```
+
+```bash
+docker run --rm --gpus all --network none -v ../data/lifemate:/data:ro -v "$PWD/out":/result lifemate:98
+```
+
+```bash
+flock <gpu.lock> scripts/docker_check.sh
+```
+
+- `docker/Dockerfile`: ảnh nền `nvidia/cuda:13.0.3-base-ubuntu24.04`, hai môi trường ghim đúng như lúc làm file public (`.venv` theo `uv.lock`; `.venv-vllm` theo `docker/requirements-vllm.txt`, bản freeze của môi trường vLLM 0.33.0). Trọng số vào qua hai build context `asr`, `llm` và nằm dưới lớp mã, nên sửa mã dựng lại trong khoảng 13 giây. Image khoảng 30 GB giải nén, 18 GB nén, trong đó 11 GB trọng số. Đổi mô hình: `LLM=models/... TAG=lifemate:<tên> scripts/docker_build.sh`, hoặc gắn trọng số và đặt `-e LLM_MODEL=...`.
+- `docker/predict.sh` chạy ba pha, mỗi pha một tiến trình để GPU được trả hết: ASR cả split theo lô 16 (cache trong thư mục tạm, nên luôn nghe lại), vLLM với `DETERMINISTIC=1` chỉ nghe ở 127.0.0.1, rồi agent tuần tự. Config `configs/docker.yaml` là `98` thêm `workers: 1` và `agent.time_budget: 25`. Có `private_test/` trong `/data` thì tự chọn.
+- Bẫy đã gặp khi chạy thử: trong image không có `nvcc`, nên FlashInfer tưởng card được hỗ trợ, bật bộ lấy mẫu của nó và biên dịch kernel lúc chạy, rồi hỏng vì thiếu `ninja`; vLLM không lên. Ở máy nhà nó đọc `nvcc` 12.4 của hệ thống, cho là SM 120 không hỗ trợ và lùi về PyTorch, nên `91`, `98` đều dùng bộ lấy mẫu PyTorch. `predict.sh` đặt `VLLM_USE_FLASHINFER_SAMPLER=0`. A30 cũng sẽ gặp lỗi này nếu không đặt.
+
+Kiểm tra trên RTX 5060 Ti 16 GB, image `sha256:382922d6…`, lệnh `docker run` tối thiểu (`--gpus all --network none`, không `--ipc=host`, không `--shm-size`), cả 634 mẫu public, hai lượt chạy từ đầu:
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| 1. Hai lượt ra cùng file nộp | Giống từng byte (sha256 `b8a71e30…`), và giống từng byte file `98` làm ngoài Docker hôm trước |
+| 2. Độ trễ mỗi mẫu, tuần tự | p50 3,6 giây, p95 7,2, p99 9,0, chậm nhất 10,2 (ASR chia đều theo lô). Khi mỗi mẫu chạy ASR một mình: ASR p99 1,8 giây, cả mẫu p99 9,2, chậm nhất 10,7. Không mẫu nào quá 20 giây |
+| 3. Giới hạn thời gian | `time_budget: 25` bật; không cắt mẫu nào (0 lần dừng vì hết giờ, 0 lượt LLM quá giờ, 0 lỗi chạy) |
+| 4. `lifemate validate` | 634 dòng, 0 lỗi schema ở cả hai lượt |
+
+- Một lượt mất 42,4 phút: ASR 6,1 phút, khởi động vLLM 1,5 phút (lâu hơn 40 giây ở máy nhà vì container mới phải biên dịch kernel Triton), agent 34,8 phút. Tính cả nạp mô hình là 4,0 giây mỗi mẫu. Trung bình 3,2 lượt LLM mỗi mẫu, nhiều nhất 8.
+- Bộ nhớ GPU (cả card, trừ mức nền): pha ASR đỉnh 8,3 GB; pha vLLM 13,5 GB, do vLLM giữ `GPU_UTIL` 0,85 của card. Phần vLLM thật sự cần: 7,9 GiB trọng số và phần ngoài torch, 0,6 GiB kích hoạt, 0,2 GiB CUDA graph, cộng KV cache; một yêu cầu đủ 16K token cần 2,25 GiB KV. Tức khoảng 11 GiB.
+- Trên A30 24 GB, cùng `GPU_UTIL` 0,85 giữ khoảng 20 GiB, KV cache khoảng 11 GiB (khoảng 80K token), còn khoảng 3,5 GiB không dùng. So với mức tối thiểu 11 GiB thì dư khoảng 12 GiB, đủ cả khi ASR và vLLM cùng nằm trên card (8,3 + 11 GB). A30 có băng thông bộ nhớ gấp đôi RTX 5060 Ti nên giải mã không chậm hơn; số trên là mức trần dè dặt.
+- Smoke 10 mẫu trước đó: transcript trùng cache ASR public 10/10, nên ASR chạy lô nhỏ hay lô cả split cũng ra cùng chữ.
+
+Chưa kiểm được:
+
+- Chưa chạy trên A30. A30 khác kiến trúc (SM 80) với card nhà (SM 120), nên kernel và số thực khác; vài mẫu có thể ra call khác. Hai lượt trên cùng một máy vẫn nên giống nhau, nhưng file của đội và lượt BTC chạy lại có thể lệch.
+- Driver dưới 580 trên A30: image có thư viện forward compatibility của CUDA 13 (`/usr/local/cuda/compat`, bản 580.126.20) và `predict.sh` tự dùng nó, nhưng chưa thử.
+- Giao diện Docker của BTC, cách tính 30 giây và thời gian nạp mô hình: câu hỏi gửi BTC ở [PROPOSAL.md](PROPOSAL.md) mục cuối.

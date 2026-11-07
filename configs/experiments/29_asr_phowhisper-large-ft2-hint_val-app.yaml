@@ -1,0 +1,3 @@
+# Như 29_asr_phowhisper-large-ft2-hint trên val_app; điền cache cho 55k.
+extends: 29_asr_phowhisper-large-ft2-hint.yaml
+subset: val_app

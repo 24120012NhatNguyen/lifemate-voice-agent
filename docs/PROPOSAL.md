@@ -310,5 +310,9 @@ Kiến trúc tách được thành ba mảng chạy song song từ đầu, vì m
 - [ ] Giới hạn 6 tỷ tham số tính cả ASR lẫn LLM, hay chỉ các mô hình dùng lúc suy luận?
 - [ ] Có được dùng API thương mại để sinh dữ liệu huấn luyện, miễn lúc suy luận chạy offline?
 - [ ] Tài liệu đóng gói Docker cho LifeMate khi nào công bố?
+- [ ] Giao diện Docker: dữ liệu private gắn ở đâu và theo cấu trúc nào (như `public_test/`?), file ra tên gì và ở đâu, lệnh chạy, có cho `--gpus all`, `--shm-size` hay `--ipc=host` không?
+- [ ] Nộp image bằng file `docker save` hay đẩy lên registry, cỡ image tối đa bao nhiêu (image của đội khoảng 30 GB giải nén, 18 GB nén, kể cả 11 GB trọng số)?
+- [ ] Máy A30 dùng driver NVIDIA bản nào (image cần từ 580, hoặc forward compatibility trên 535-575)?
+- [ ] BTC so file nộp private của đội với lượt chạy lại từng byte, hay so điểm? A30 khác kiến trúc với GPU của đội, nên số thực có thể lệch ở vài mẫu dù đã tất định hoá.
 
 **Ngoài phạm vi đề xuất này:** phân công người và lịch theo tuần, theo yêu cầu.

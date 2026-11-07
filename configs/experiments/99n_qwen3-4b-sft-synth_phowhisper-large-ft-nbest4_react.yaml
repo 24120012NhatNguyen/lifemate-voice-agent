@@ -1,0 +1,5 @@
+# Synth × N-best đầu-cuối trên val_random: như 54n (PhoWhisper-ft beam 4, 4 bản nghe) nhưng agent là checkpoint synth
+# (99, train_rest + 600 mẫu app tổng hợp). So ghép cặp với 54n (cùng ASR, agent không synth) và với 99 (text gold).
+extends: 54n_qwen3-4b-sft_phowhisper-large-ft-nbest4_react.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-synth}

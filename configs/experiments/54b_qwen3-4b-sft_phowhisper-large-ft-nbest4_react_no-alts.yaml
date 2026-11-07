@@ -1,0 +1,4 @@
+# Như 54n nhưng agent không thấy bản nghe khác: chỉ đổi greedy sang tia đầu của beam 4 (cả val_random); so với 54f.
+extends: 54f_qwen3-4b-sft_phowhisper-large-ft_react_full.yaml
+asr: {num_beams: 4, n_best: 4, batch_size: 2}
+agent: {show_alts: false}

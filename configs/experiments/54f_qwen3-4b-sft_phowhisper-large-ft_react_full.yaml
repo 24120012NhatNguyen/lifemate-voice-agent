@@ -1,0 +1,3 @@
+# Như 54 trên cả val_random (225 mẫu): mốc ghép cặp cho các thử nghiệm ASR của nấc 5 (54g, 54n, 54h...).
+# Tên riêng vì runs/ của nhóm đã có lượt 54 trên 100 mẫu.
+extends: 54_qwen3-4b-sft_phowhisper-large-ft_react.yaml

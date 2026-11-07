@@ -21,6 +21,7 @@ def main(argv=None):
     r = sub.add_parser("run", help="chạy một hoặc nhiều config")
     r.add_argument("configs", nargs="+")
     r.add_argument("--set", action="append", default=[], help="ghi đè, vd. --set limit=50")
+    r.add_argument("--runs-dir", type=Path, default=None, help="thư mục ghi lượt chạy thay cho runs/ (Docker: /result/runs)")
     sub.add_parser("list", help="liệt kê phương án theo tầng")
     v = sub.add_parser("validate", help="kiểm schema predictions.jsonl của một run")
     v.add_argument("run_dir")
@@ -31,7 +32,7 @@ def main(argv=None):
     if a.cmd == "run":
         from .runner import run
         for path in a.configs:
-            run(config.load(path, a.set))
+            run(config.load(path, a.set), out_root=a.runs_dir)
     elif a.cmd == "list":
         from .registry import available
         for stage, entries in available().items():

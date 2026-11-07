@@ -41,13 +41,15 @@ def gold_hash(split, sample) -> str:
 
 def run_one(cfg, agent, split, sample, transcript) -> dict:
     env = data.tool_env(split, sample["id"])
-    genv = GuardedEnv(env, split, sample, transcript["final"], **(cfg.get("guards") or {}))
+    genv = GuardedEnv(env, split, sample, transcript["final"], turns=transcript.get("turns"), **(cfg.get("guards") or {}))
     t0 = time.perf_counter()
     try:
         trace = agent.run(split, sample, transcript, genv)
         err = None
     except Exception as e:  # một mẫu lỗi không được làm hỏng cả lượt chạy; vẫn nộp những call đã gọi
         trace, err = {"steps": []}, f"{type(e).__name__}: {e}"
+    finally:
+        genv.finish()
     sec = time.perf_counter() - t0
     calls, h = env.get_tool_calls(), env.get_state_hash()
     ran = [g for g in genv.log if g["decision"].startswith("chạy")]
@@ -137,6 +139,7 @@ def run(cfg: dict, log=print, out_root: Path | None = None) -> Path:
         "repeats": repeats,
         "sec_p50": round(st.median(secs), 2),
         "sec_p95": round(secs[int(0.95 * (len(secs) - 1))], 2),
+        "sec_p99": round(secs[int(0.99 * (len(secs) - 1))], 2),
         "sec_max": round(secs[-1], 2),
         "llm_calls_mean": round(st.mean(r["llm_calls"] for r in rows), 2),
         "prompt_tokens_mean": round(st.mean(r["prompt_tokens"] for r in rows)),

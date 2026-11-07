@@ -1,0 +1,3 @@
+# Như 54h trên cả val_app; so với 55k và 55g.
+extends: 55g_qwen3-4b-sft_phowhisper-large-ft2_react_val-app.yaml
+asr: {hint: profile_history_apps}

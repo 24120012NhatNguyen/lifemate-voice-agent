@@ -3,6 +3,7 @@
 #   scripts/gpu_job.sh train sft/train.jsonl models/qwen3-4b-sft [đối số thêm cho train_sft.py]
 #   SET="limit=100" scripts/gpu_job.sh eval models/qwen3-4b-sft configs/experiments/40_*.yaml ...
 #   SET="limit=100" scripts/gpu_job.sh run configs/experiments/21_*.yaml   (config không cần vLLM, vd. chỉ ASR)
+#   LOGFILE=logs/asr.log scripts/gpu_job.sh py scripts/finetune_whisper.py --out models/x   (script Python bất kỳ)
 # eval bật vLLM với DETERMINISTIC=1 cho đúng mô hình đó, chạy hàng config rồi tắt server.
 # GPU_LOCK, GPU_LOG: khoá và nhật ký dùng chung (mặc định logs/gpu.lock, logs/GPU.md). WHO: tên ghi vào nhật ký.
 set -uo pipefail
@@ -45,13 +46,18 @@ case "$kind" in
     if curl -s localhost:8000/v1/models | grep -qF "\"$model\""; then scripts/run_queue.sh "$@"; rc=$?; else echo "vLLM không lên"; rc=4; fi
     kill -TERM -- -"$vpid" 2>/dev/null; wait "$vpid" 2>/dev/null; vpid=""; sleep 5
     ;;
+  py)
+    note "TAKE gpu.lock, python $*"
+    .venv/bin/python "$@" > "${LOGFILE:-logs/$(basename "${1%.py}").log}" 2>&1
+    rc=$?
+    ;;
   run)
     note "TAKE gpu.lock, run $*"
     scripts/run_queue.sh "$@"
     rc=$?
     ;;
   *)
-    echo "dùng: $0 train|eval|run ..."; rc=2
+    echo "dùng: $0 train|eval|run|py ..."; rc=2
     ;;
 esac
 exit $rc

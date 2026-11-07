@@ -90,9 +90,24 @@ def test_covers_the_behaviours_the_gold_needs():
         seen["app thật"] += any(c["name"] in data.tool_specs("train") for c in calls if c["name"] != "sys.ask_missing_info")
         seen["nhiều app tổng hợp"] += len(s["synth"]["apps"]) > 1
         seen["hai lệnh ghi"] += kinds.count("write") >= 2
+        if s["synth"]["kind"] == "pick_detail":  # hai mục cùng tên gốc, lời nói đủ chi tiết: đọc rồi ghi, không hỏi
+            seen["chọn theo chi tiết"] += "meta" not in kinds and "write" in kinds and "read" in kinds
     for k in ["rỗng", "hỏi lại", "đọc rồi ghi", "ghi không đọc, ID từ lịch sử", "chỉ đọc", "app thật", "nhiều app tổng hợp",
-              "hai lệnh ghi"]:
+              "hai lệnh ghi", "chọn theo chi tiết"]:
         assert seen[k] >= 5, (k, dict(seen))
+
+
+def test_pick_detail_reads_a_list_with_two_lookalikes_and_acts_without_asking():
+    picked = [s for s in SAMPLES if s["synth"]["kind"] == "pick_detail"]
+    assert picked
+    for s in picked:
+        calls = s["label"]["tool_calls"]
+        assert all(c["name"] != "sys.ask_missing_info" for c in calls), s["id"]
+        kinds = [synth.specs(s)[c["name"]]["kind"] for c in calls]
+        assert "read" in kinds and "write" in kinds, (s["id"], kinds)
+        # lời nói mang đuôi phân biệt của make_ambiguous ("lớn" / "nhỏ", "cũ" / "mới", "1" / "2", "ở nhà" / "ở công ty")
+        low = s["audio_text"].lower()
+        assert any(a in low or b in low for a, b in synth.scenarios.AMBIG), s["id"]
 
 
 def test_synthetic_apps_never_reuse_a_real_or_held_out_app_name():

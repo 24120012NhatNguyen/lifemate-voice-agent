@@ -1,0 +1,7 @@
+# Như configs/docker-nbest.yaml nhưng bản nộp là 98s (agent full-synth). Dựng: CONFIG=configs/docker-synth-nbest.yaml
+# LLM=models/qwen3-4b-sft-full-synth TAG=lifemate:98s scripts/docker_build.sh (LLM= để chép đúng trọng số vào image).
+extends: experiments/98s_submit_public_full-synth_fixes_nbest4.yaml
+subset: all
+workers: 1
+agent:
+  time_budget: 25

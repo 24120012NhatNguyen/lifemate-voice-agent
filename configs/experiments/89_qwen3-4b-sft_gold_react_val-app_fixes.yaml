@@ -1,0 +1,3 @@
+# Như 88 trên cả val_app; so với 87.
+extends: 41_qwen3-4b-sft_gold_react_val-app.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}

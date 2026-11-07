@@ -1,0 +1,7 @@
+# Như 40, thêm hỏi lại khi bước đầu dừng mà máy có app chưa từng được gọi trong train_rest (agent.recheck_stop).
+# So ghép cặp với 40: ở v1 có 5 mẫu dừng ngay sẽ bị hỏi lại, 3 mẫu dừng đúng (gold rỗng) có thể bị phá.
+extends: ../base.yaml
+subset: val_random
+agent:
+  llm: {model: models/qwen3-4b-sft}
+  recheck_stop: {mode: nudge, known: train_rest}

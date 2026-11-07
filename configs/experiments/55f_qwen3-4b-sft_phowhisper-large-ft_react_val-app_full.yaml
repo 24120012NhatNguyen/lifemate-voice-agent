@@ -1,0 +1,2 @@
+# Như 55 trên cả val_app (301 mẫu); mốc ghép cặp như 54f.
+extends: 55_qwen3-4b-sft_phowhisper-large-ft_react_val-app.yaml

@@ -1,0 +1,6 @@
+# Như 29_asr_phowhisper-large-ft, có mồi tên riêng từ hồ sơ và lịch sử (bias_hint profile_history). Với
+# Whisper-turbo (25) mồi tăng thực thể đúng 43,2 → 47,4 nhưng WER tệ hơn 0,9; chưa thử với PhoWhisper-ft.
+# Có mồi thì mỗi mẫu chạy lẻ, không gộp batch. Cũng điền cache ASR cho 78.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: models/phowhisper-large-ft, num_beams: 1, batch_size: 16, hint: profile_history}
+agent: {name: none}

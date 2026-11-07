@@ -1,0 +1,5 @@
+# Nấc 5: PhoWhisper-large LoRA v2 (6 epoch, đổi tốc độ 0,9/1,0/1,1, nửa số câu học kèm mồi tên + từ vựng app), chạy không
+# mồi. So với 29_asr_phowhisper-large-ft (v1, 3 epoch). Cũng điền cache ASR cho 54g.
+extends: ../base.yaml
+asr: {name: hf_whisper, model: models/phowhisper-large-ft2, num_beams: 1, batch_size: 16}
+agent: {name: none}

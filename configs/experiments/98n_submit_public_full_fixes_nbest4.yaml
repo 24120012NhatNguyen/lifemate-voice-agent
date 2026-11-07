@@ -1,0 +1,8 @@
+# Bản nộp 98 (PhoWhisper-ft → Qwen3-4B SFT full → luật viết tay) nghe bằng beam 4 và cho agent thấy tới 3 bản nghe khác
+# chữ (N-best, nhánh NhatNguyen/asr-ft-v2). Trên val cùng agent, N-best so với greedy ghép cặp từng mẫu:
+# +4,51 ± 1,97 (54n vs 54f, val_random) và +3,48 ± 1,78 (55n vs 55f, val_app); các lượt này chưa bật luật của 98.
+# n_best: 1 (hay bỏ khối asr) thì y như 98: HFWhisper chỉ rẽ sang _nbest khi n_best > 1, alts rỗng nên prompt không đổi.
+# batch 2 vì beam 4 × 4 bản ở batch 8 cần hơn 15 GB (cache cross-attention 32 lớp); A30 24 GB có thể thử batch 4.
+extends: 98_submit_public_full_fixes.yaml
+asr: {num_beams: 4, n_best: 4, batch_size: 2}
+agent: {show_alts: true}

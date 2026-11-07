@@ -2,6 +2,8 @@
 import pytest
 
 from lifemate import config, data, splits
+from lifemate.asr.adapters import _distinct
+from lifemate.asr.base import app_phrases, bias_hint, proper_names
 from lifemate.asr.post import PhoneticEntityFix, phonetic_key
 from lifemate.asr.train_data import ctc_text, utterances
 from lifemate.context import timetable
@@ -95,3 +97,17 @@ def test_asr_train_data_excludes_val():
     assert ids and not ids & {x["id"] for x in TRAIN if splits.group(x) != "train_rest"}
     assert not {u["key"] for u in train} & {u["key"] for u in dev}
     assert ctc_text("Nạp 50.000 lúc 9:30, nhé!") == "nạp năm mươi nghìn lúc chín giờ ba mươi nhé"
+
+
+def test_hint_names_and_app_vocab():
+    # lớp [À-Ỹ] cũ bắt cả chữ thường có dấu ("ền điện", "ủa Sơn Tùng")
+    assert proper_names("Đã trả tiền điện của Sơn Tùng, nhắn Sếp Dũng và Mẹ.") == ["Sơn Tùng", "Sếp Dũng"]
+    s = next(x for x in TRAIN if "tv" in x["context"]["installed_apps"])
+    names, full = bias_hint(s, "profile_history"), bias_hint(s, "profile_history_apps")
+    assert full.startswith(names) and "ghi hình" in full
+    assert not any("_" in w or ":" in w for words in app_phrases("train").values() for w in words)
+
+
+def test_nbest_alts_differ_in_words():
+    assert _distinct("Giao hàng nhé.", ["giao hàng nhé", "Sao hàng nhé.", "Sao hàng, nhé", "Giao hàng nha."]) == \
+        ["Sao hàng nhé.", "Giao hàng nha."]

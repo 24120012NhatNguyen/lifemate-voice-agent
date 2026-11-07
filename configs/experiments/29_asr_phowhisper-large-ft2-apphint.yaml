@@ -1,0 +1,4 @@
+# PhoWhisper-ft2 với mồi tên riêng rồi từ vựng các app đã cài (profile_history_apps, app hiếm trước, cắt 200 token).
+# Điền cache cho 54h.
+extends: 29_asr_phowhisper-large-ft2.yaml
+asr: {hint: profile_history_apps}

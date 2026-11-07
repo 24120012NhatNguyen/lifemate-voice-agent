@@ -1,0 +1,6 @@
+# Thời gian mỗi mẫu của bản nộp 91 khi chạy tuần tự (workers 1), trên 200 mẫu public ngẫu nhiên. Lượt 90 chạy
+# 8 mẫu song song nên thời gian có cả lúc chờ nhau. Không bật agent.time_budget, để thấy thời gian thật.
+# Thời gian ASR lấy từ cache là thời gian chia đều của cả batch, nên thấp hơn khi chạy lẻ từng mẫu.
+extends: 91_submit_public_full.yaml
+workers: 1
+limit: 200

@@ -1,0 +1,3 @@
+# Bản nộp 91 (44,70 public) với các luật của 88: ứng viên nộp tiếp theo nếu 88/89 và 96/97 không tệ đi.
+extends: 91_submit_public_full.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}

@@ -1,0 +1,5 @@
+# Nấc 5, bước 2: PhoWhisper-ft (v1, bản giữ lại sau bước 1) beam 4, agent thấy tới 3 bản nghe khác (agent.show_alts).
+# So với 54b (cùng bản chính, không cho thấy bản khác) để tách phần của N-best, và với 54f (greedy).
+extends: 54f_qwen3-4b-sft_phowhisper-large-ft_react_full.yaml
+asr: {num_beams: 4, n_best: 4, batch_size: 2}
+agent: {show_alts: true}

@@ -17,6 +17,18 @@ from ..registry import register
 from .base import ASR, Request, Result, load_audio
 
 
+def _distinct(primary: str, alts: list[str], k: int = 3) -> list[str]:
+    """Bản nghe khác khác bản chính ở chữ (không tính hoa thường, dấu câu), tối đa k bản, giữ thứ tự beam."""
+    from .metrics import norm
+
+    seen, out = {norm(primary)}, []
+    for a in alts:
+        if norm(a) not in seen:
+            seen.add(norm(a))
+            out.append(a)
+    return out[:k]
+
+
 def _local(model: str) -> str:
     """Đường dẫn checkpoint trong repo (models/...) thành tuyệt đối; id HF giữ nguyên."""
     path = REPO / model
@@ -50,7 +62,7 @@ class HFWhisper(ASR):
     """Whisper bất kỳ trên HuggingFace qua transformers (Whisper-turbo, PhoWhisper, PhoASR-whisper-small)."""
 
     def __init__(self, model="openai/whisper-large-v3-turbo", num_beams=1, batch_size=16, dtype="float16",
-                 device="cuda:0", n_best=1, tokens_per_sec=10, generate=None, **_):
+                 device="cuda:0", n_best=1, tokens_per_sec=10, generate=None, max_prompt_tokens=200, **_):
         import torch
         from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
@@ -64,6 +76,7 @@ class HFWhisper(ASR):
         self.batch_size = batch_size
         self.tokens_per_sec = tokens_per_sec  # chặn vòng lặp ảo giác: số token tối đa theo độ dài audio
         self.generate = generate or {}  # truyền thẳng vào model.generate, vd. {no_repeat_ngram_size: 4}
+        self.max_prompt_tokens = max_prompt_tokens  # mồi + max_new_tokens (≤ 220) phải vừa 448 vị trí của decoder
 
     def _gen(self, wavs, prompt=""):
         torch = self.torch
@@ -74,28 +87,49 @@ class HFWhisper(ASR):
                   max_new_tokens=min(220, int(longest * self.tokens_per_sec) + 16),
                   num_return_sequences=self.n_best, **self.generate)
         if prompt:
-            kw["prompt_ids"] = torch.tensor(self.proc.get_prompt_ids(prompt), device=self.device)
+            ids = self.proc.get_prompt_ids(prompt)[:self.max_prompt_tokens]
+            kw["prompt_ids"] = torch.tensor(ids, device=self.device)
+            prompt = self.proc.decode(ids[1:], skip_special_tokens=True).strip()  # phần mồi còn lại sau khi cắt
         with torch.inference_mode():
-            ids = self.model.generate(feats.input_features.to(self.device, self.dtype),
-                                      attention_mask=feats.attention_mask.to(self.device), **kw)
+            if self.n_best > 1:
+                ids = self._nbest(feats.input_features.to(self.device, self.dtype), kw)
+            else:
+                ids = self.model.generate(feats.input_features.to(self.device, self.dtype),
+                                          attention_mask=feats.attention_mask.to(self.device), **kw)
         texts = self.proc.batch_decode(ids, skip_special_tokens=True)
         if prompt:  # transformers giữ phần mồi ở đầu chuỗi giải mã ở một số phiên bản
             texts = [t[len(prompt):].strip() if t.strip().startswith(prompt) else t.strip() for t in texts]
         return [t.strip() for t in texts]
+
+    def _nbest(self, feats, kw):
+        """N-best thật: generate của Whisper (transformers 4.57) trả num_return_sequences bản giống hệt tia tốt nhất, nên
+        gọi beam search chung của GenerationMixin với tiền tố decoder tự dựng; tia đầu trùng tia đầu của Whisper."""
+        from transformers.generation.utils import GenerationMixin
+
+        tok, gc = self.proc.tokenizer, self.model.generation_config
+        prefix = [tok.convert_tokens_to_ids(t) for t in ("<|startoftranscript|>", "<|vi|>", "<|transcribe|>",
+                                                         "<|notimestamps|>")]
+        prompt = kw.get("prompt_ids")
+        prefix = (prompt.tolist() if prompt is not None else []) + prefix
+        dec = self.torch.tensor([prefix] * feats.shape[0], device=self.device)
+        extra = {k: v for k, v in kw.items() if k not in ("language", "task", "prompt_ids")}
+        return GenerationMixin.generate(self.model, input_features=feats, decoder_input_ids=dec, forced_decoder_ids=None,
+                                        begin_suppress_tokens=gc.begin_suppress_tokens,
+                                        suppress_tokens=gc.suppress_tokens, **extra)
 
     def transcribe(self, reqs):
         out: list[Result] = []
         if any(r.hint for r in reqs):  # mồi khác nhau từng mẫu: chạy lẻ
             for r in reqs:
                 texts = self._gen([load_audio(r.path)], r.hint)
-                out.append(Result(texts[0], texts[1:]))
+                out.append(Result(texts[0], _distinct(texts[0], texts[1:])))
             return out
         for i in range(0, len(reqs), self.batch_size):
             part = reqs[i:i + self.batch_size]
             texts = self._gen([load_audio(r.path) for r in part])
             for j in range(len(part)):
                 group = texts[j * self.n_best:(j + 1) * self.n_best]
-                out.append(Result(group[0], group[1:]))
+                out.append(Result(group[0], _distinct(group[0], group[1:])))
         return out
 
     def close(self):

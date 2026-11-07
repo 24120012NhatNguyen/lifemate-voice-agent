@@ -1,0 +1,13 @@
+# Build context của docker/Dockerfile là gốc repo; chỉ mã và config vào image, trọng số đi qua build context riêng.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!prompts/
+!configs/
+!scripts/
+!kaggle/
+!docker/
+**/__pycache__
