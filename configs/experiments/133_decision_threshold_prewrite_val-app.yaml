@@ -1,0 +1,4 @@
+# LM-25 (Pro): như 132 nhưng áp ngưỡng ở mọi bước trước lệnh ghi đầu và trước khi hỏi lại (brief mục 8, LM-33).
+extends: 132_decision_threshold_val-app.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: pre_write, ask_min: 0.7, stop_min: 0.7}

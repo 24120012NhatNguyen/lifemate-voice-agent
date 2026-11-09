@@ -1,0 +1,4 @@
+# LM-25 (Pro): ngưỡng ở bước quyết định đầu; ghi đè chỉ cấm hỏi lại và stop. Ngưỡng điền theo decision_sweep (2-fold).
+extends: 130_decision_record.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: first, ask_min: 0.7, stop_min: 0.7}

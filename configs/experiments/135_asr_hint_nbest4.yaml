@@ -1,0 +1,4 @@
+# Pro (10/11): như 130 với ASR mồi tên riêng (hồ sơ + tên trong lịch sử, như 78/79) cộng beam 4 / N-best 4.
+# Mồi tên riêng một mình: +0,9 / +1,5 (khoảng tin cậy qua 0), chưa từng đo cùng N-best. Nhắm nhóm D của LM-33.
+extends: 130_decision_record.yaml
+asr: {hint: profile_history}

@@ -1,0 +1,6 @@
+# LM-25 (Pro): bước đầu như 132 (hỏi lại / stop 0,7); các bước sau trước lệnh ghi chỉ ghi đè hỏi lại (p_ask < 0,7),
+# không ghi đè stop (ở 133/133b, ghi đè stop bước sau: val_random −1,3 đến −1,8); tối đa 2 lần ghi đè mỗi mẫu.
+extends: 130_decision_record_val-app.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: pre_write, ask_min: 0.7, stop_min: 0.7, later_ask_min: 0.7,
+             later_stop_min: 0.0, max_overrides: 2}

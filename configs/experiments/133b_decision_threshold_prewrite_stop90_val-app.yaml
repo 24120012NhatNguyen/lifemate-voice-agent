@@ -1,0 +1,4 @@
+# LM-25 (Pro): như 133 nhưng stop_min 0,9: ở các bước sau, stop với p < 0,9 trên 130 val_app gần như đều sai (14 mẫu).
+extends: 133_decision_threshold_prewrite_val-app.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: pre_write, ask_min: 0.7, stop_min: 0.9}

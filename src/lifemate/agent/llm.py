@@ -34,4 +34,9 @@ class LLM:
         meta = {"sec": time.perf_counter() - t0,
                 "prompt_tokens": getattr(usage, "prompt_tokens", 0),
                 "completion_tokens": getattr(usage, "completion_tokens", 0)}
+        lp = getattr(resp.choices[0], "logprobs", None)
+        if lp is not None and getattr(lp, "content", None):
+            # [(token, logprob, [(token khác, logprob), ...]), ...]: agent đọc xác suất quyết định rồi bỏ khỏi vết
+            meta["logprobs"] = [(t.token, t.logprob, [(a.token, a.logprob) for a in (t.top_logprobs or [])])
+                                for t in lp.content]
         return resp.choices[0].message, meta

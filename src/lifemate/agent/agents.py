@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 
@@ -71,13 +72,14 @@ def _read(path: str) -> str:
 class LLMAgent(Agent):
     def __init__(self, llm: dict | None = None, prompt="prompts/react_json.md", rules="prompts/rules/verified.md",
                  timetable="two_weeks", schema="compact", history="full", ledger=True, max_steps=8,
-                 show_alts=True, obs_chars=2500, calc=False, normalize_hint=False, **_):
+                 show_alts=True, obs_chars=2500, calc=False, normalize_hint=False, history_alts=False, **_):
         self.llm = LLM(**(llm or {}))
         self.template = _read(prompt)
         self.rules = _read(rules) if rules else ""
         self.opts = dict(timetable=timetable, schema=schema, history=history, ledger=ledger)
         self.max_steps = max_steps
         self.show_alts = show_alts
+        self.history_alts = history_alts  # N-best của các lượt user trong lịch sử (mặc định chỉ lượt cuối)
         self.obs_chars = obs_chars
         self.calc = calc
         self.normalize_hint = normalize_hint  # khối giá trị máy đọc từ lời nói (normalize.py) trong prompt
@@ -96,7 +98,8 @@ class LLMAgent(Agent):
 
     def user_prompt(self, sample, transcript) -> str:
         parts = []
-        hist = context.history(sample, transcript.get("turns", {}), self.opts["history"])
+        hist = context.history(sample, transcript.get("turns", {}), self.opts["history"],
+                               transcript.get("alts") if getattr(self, "history_alts", False) else None)
         if hist:
             parts.append("LỊCH SỬ HỘI THOẠI:\n" + hist)
         parts.append(f'YÊU CẦU CUỐI CỦA NGƯỜI DÙNG (bản chép lời):\n"{transcript["final"]}"')
@@ -149,6 +152,69 @@ def _json_schema(schema: dict) -> dict:
     return {"response_format": {"type": "json_schema", "json_schema": {"name": "action", "schema": schema}}}
 
 
+ASK = "sys.ask_missing_info"
+
+
+def _option_mass(logprobs: list, text: str, key: str, options: dict[str, list[str]], start: int = 0):
+    """Khối xác suất của từng nhóm lựa chọn ở token đầu tiên của giá trị chuỗi sau khoá `key` (vd. "action").
+
+    logprobs: [(token, logprob, [(token khác, logprob), ...]), ...] của câu đã sinh; text là câu đó.
+    options: tên nhóm → các giá trị đầy đủ thuộc nhóm. Một token khác chỉ được tính khi nó bắt đầu bằng đúng phần
+    đứng trước giá trị trong token đã chọn (vd. ' "') và phần còn lại khớp tiền tố của đúng một nhóm.
+    Trả về ({nhóm: khối xác suất}, vị trí ký tự đầu giá trị) hoặc (None, start) khi không tìm thấy,
+    token không căn được với text, hoặc có token còn chung cho nhiều nhóm (không đoán phần chia khối đó)."""
+    m = re.compile(r'"' + re.escape(key) + r'"\s*:\s*"').search(text, start)
+    if not m:
+        return None, start
+    vs, pos, i = m.end(), 0, None
+    for k, (tok, _, _) in enumerate(logprobs):
+        if pos <= vs < pos + len(tok):
+            i = k
+            break
+        pos += len(tok)
+    if i is None or not text.startswith("".join(t[0] for t in logprobs[:i])):
+        return None, start  # token trước vị trí quyết định không căn được với text: không đoán
+    pre = text[pos:vs]
+    mass = dict.fromkeys(options, 0.0)
+    seen = set()
+    # API trả logprob của token đã chọn riêng; nó có thể nằm ngoài top-k trước mặt nạ schema.
+    candidates = [(logprobs[i][0], logprobs[i][1]), *(logprobs[i][2] or [])]
+    for tok, lp in candidates:
+        if tok in seen or not tok.startswith(pre):
+            continue
+        seen.add(tok)
+        rest = tok[len(pre):]
+        if not rest:
+            continue
+        # Một token đi hết giá trị phải đóng chuỗi JSON, không phải 'calling' cho lựa chọn 'call'.
+        hits = [g for g, vals in options.items() if any(v.startswith(rest) or rest.startswith(v + '"') for v in vals)]
+        if len(hits) > 1 and math.exp(lp) > 0:
+            return None, start
+        if len(hits) == 1:
+            mass[hits[0]] += math.exp(lp)
+    return mass, vs
+
+
+def decision_probs(logprobs: list, text: str, tools: list[str]) -> dict | None:
+    """Xác suất quyết định của một bước, chuẩn hoá trên các lựa chọn hợp lệ.
+
+    p_stop, p_call: P(action = stop | call). p_ask_call: P(tên tool = sys.ask_missing_info | call), chỉ có khi bước
+    đó chọn call (tên tool chỉ được sinh sau "call"); khi đó p_ask = p_call · p_ask_call và p_act = p_call − p_ask."""
+    if not logprobs:
+        return None
+    act, vs = _option_mass(logprobs, text, "action", {"call": ["call"], "stop": ["stop"]})
+    if not act or not sum(act.values()):
+        return None
+    tot = act["call"] + act["stop"]
+    out = {"p_stop": act["stop"] / tot, "p_call": act["call"] / tot}
+    name, _ = _option_mass(logprobs, text, "name", {"ask": [ASK], "act": [t for t in tools if t != ASK]}, vs)
+    if name and sum(name.values()):
+        out["p_ask_call"] = name["ask"] / (name["ask"] + name["act"])
+        out["p_ask"] = out["p_call"] * out["p_ask_call"]
+        out["p_act"] = out["p_call"] - out["p_ask"]
+    return {k: round(v, 6) for k, v in out.items()}
+
+
 def _nudge(split: str, tools: list[str]) -> str:
     specs = data.tool_specs(split)
     lines = "\n".join(f"- {t}: {specs.get(t, {}).get('description', '')}" for t in tools)
@@ -161,7 +227,7 @@ def _nudge(split: str, tools: list[str]) -> str:
 class ReactJSON(LLMAgent):
     """ReAct với prompt tự viết: mỗi bước LLM trả {"thought", "action": call|stop, "name", "arguments"}."""
 
-    def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, **kw):
+    def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, decision=None, **kw):
         """json_mode: off | object (chỉ ép JSON hợp lệ) | schema (ép action và tên tool trong tập đã cài).
         time_budget: giây cho cả mẫu, tính cả ASR (luật 30 s). Trước mỗi lượt LLM mà còn dưới min_step_sec thì
             dừng; lượt nào chạy quá phần còn lại cũng dừng. Các call đã gọi vẫn được nộp.
@@ -169,12 +235,40 @@ class ReactJSON(LLMAgent):
             không nằm trong call gold của tập `known` (app mô hình SFT chưa thấy được dùng; danh sách tên app khi
             không có dữ liệu train, vd. trong Docker) thì hỏi lại đúng một lần:
             nudge nhắc tên và mô tả tool của các app đó, mô hình vẫn được stop; force (cần json_mode: schema)
-            bắt gọi một tool của chúng hoặc sys.ask_missing_info."""
+            bắt gọi một tool của chúng hoặc sys.ask_missing_info.
+        decision: chỉnh quyết định làm / hỏi lại / đứng yên theo xác suất của chính model (LM-25), mặc định tắt:
+            record: true       ghi p_stop, p_call, p_ask_call, p_ask, p_act vào từng bước (logprobs của vLLM; không đổi
+                               hành vi ở temperature 0)
+            top_logprobs: 20   số token khác đọc ở mỗi vị trí
+            force_act_first    bước quyết định đầu tiên bị cấm stop và sys.ask_missing_info (chỉ để đo phản thực)
+            mode: threshold    khi model chọn hỏi lại mà p_ask < ask_min, hoặc stop mà p_stop < stop_min, sinh lại bước
+                               đó với cả hỏi lại và stop bị cấm (model tự chọn đọc hay ghi), trước khi gọi tool;
+                               ghi decision_override vào bước
+            scope: first       chỉ bước quyết định đầu; pre_write: mọi bước trước lệnh ghi đầu tiên và trước khi đã
+                               hỏi lại
+            ask_min, stop_min  ngưỡng; 0 là không bao giờ ghi đè
+            later_ask_min, later_stop_min  ngưỡng riêng cho các bước sau bước quyết định đầu (scope pre_write);
+                               mặc định bằng ask_min / stop_min
+            max_overrides      số lần ghi đè tối đa mỗi mẫu (mặc định không giới hạn ngoài max_steps)"""
         super().__init__(**kw)
         self.json_mode = {True: "object", False: "off"}.get(json_mode, json_mode)
         self.time_budget = time_budget
         self.min_step_sec = min_step_sec
         self.recheck = recheck_stop or {}
+        self.decision = decision or {}
+
+    def _in_scope(self, split, steps) -> bool:
+        """Bước sắp tới có thuộc phạm vi chỉnh ngưỡng không."""
+        decided = [s for s in steps if s.get("action") in ("call", "stop")]
+        if self.decision.get("scope", "first") == "first":
+            return not decided
+        specs = data.tool_specs(split)
+        for s in decided:
+            if s.get("action") == "stop" or s.get("name") == ASK:
+                return False
+            if specs.get(s.get("name"), {}).get("kind") == "write":
+                return False
+        return True
 
     def _unseen_tools(self, sample) -> list[str]:
         if not self.recheck:
@@ -193,28 +287,69 @@ class ReactJSON(LLMAgent):
             kw = {"response_format": {"type": "json_object"}}
         elif self.json_mode == "schema":
             kw = _json_schema(_action_schema(data.installed_tools(sample) + ([CALC] if self.calc else [])))
+        installed = data.installed_tools(sample) + ([CALC] if self.calc else [])
         tools = set(data.installed_tools(sample))
         unseen = self._unseen_tools(sample)
+        dec = self.decision
+        threshold = dec.get("mode") == "threshold" and self.json_mode == "schema"
+        lp_kw = {"logprobs": True, "top_logprobs": dec.get("top_logprobs", 20)} if dec.get("record") or threshold else {}
+        no_ask = _json_schema(_action_schema([t for t in installed if t != ASK], actions=("call",)))
         once = None  # kw riêng cho đúng lượt kế tiếp (recheck force)
         for _ in range(self.max_steps + (4 if self.calc else 0)):  # bước sys.calc không tính vào max_steps
             req = once or kw
             once = None
+            if (dec.get("force_act_first") and self.json_mode == "schema"
+                    and not any(s.get("action") in ("call", "stop") for s in steps)):
+                req = no_ask
             if self.time_budget:
                 left = self.time_budget - (time.perf_counter() - t0)
                 if left < self.min_step_sec:
                     steps.append({"action": "budget_stop", "sec_left": round(left, 3)})
                     break
                 req = {**req, "timeout": left}
+            in_scope = threshold and self._in_scope(split, steps)
             try:
-                msg, meta = self.llm.chat(msgs, **req)
+                msg, meta = self.llm.chat(msgs, **lp_kw, **req)
             except LLMTimeout:
                 steps.append({"action": "timeout"})
                 break
+            lps = meta.pop("logprobs", None)
             act = _parse_action(msg.content)
             if isinstance(act, dict) and act.get("action") in tools:  # tên tool đặt nhầm vào "action"
                 act = {**act, "name": act.get("name") or act["action"], "action": "call"}
             step = {"raw": msg.content, **meta}
-            if not isinstance(act, dict) or act.get("action") not in ("call", "stop"):
+            ok = isinstance(act, dict) and act.get("action") in ("call", "stop")
+            probs = decision_probs(lps, msg.content, installed) if ok and lps else None
+            if probs:
+                step.update(probs)
+            chosen = None
+            if ok and in_scope and probs and sum(1 for s in steps if s.get("decision_override")) < dec.get(
+                    "max_overrides", self.max_steps):
+                later = any(s.get("action") in ("call", "stop") for s in steps)
+                ask_min = dec.get("later_ask_min", dec.get("ask_min", 0)) if later else dec.get("ask_min", 0)
+                stop_min = dec.get("later_stop_min", dec.get("stop_min", 0)) if later else dec.get("stop_min", 0)
+                if act["action"] == "stop" and probs["p_stop"] < stop_min:
+                    chosen = "stop"
+                elif act.get("name") == ASK and probs.get("p_ask", 1) < ask_min:
+                    chosen = "ask"
+            if chosen:
+                left = self.time_budget - (time.perf_counter() - t0) if self.time_budget else None
+                if left is None or left >= self.min_step_sec:
+                    from openai import APIError
+
+                    try:
+                        msg2, meta2 = self.llm.chat(msgs, **no_ask, **({"timeout": left} if left else {}))
+                        act2 = _parse_action(msg2.content)
+                    except (LLMTimeout, APIError):
+                        act2 = None
+                    if isinstance(act2, dict) and act2.get("action") == "call" and act2.get("name") in tools:
+                        step["decision_override"] = {"from": chosen, "p": probs["p_stop" if chosen == "stop" else "p_ask"],
+                                                     "raw": msg.content}
+                        step["raw"] = msg2.content
+                        for k in ("sec", "prompt_tokens", "completion_tokens"):
+                            step[k] = step.get(k, 0) + meta2.get(k, 0)
+                        msg, act = msg2, act2
+            if not ok:
                 step["action"] = "parse_error"
                 steps.append(step)
                 retries += 1

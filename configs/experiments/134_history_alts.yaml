@@ -1,0 +1,4 @@
+# Pro (10/11): như 130 nhưng prompt hiện cả N-best của các lượt user trong lịch sử (mặc định chỉ lượt cuối).
+# Nhắm nhóm D của LM-33 (ASR hỏng thông tin) khi thông tin nằm ở lượt trước.
+extends: 130_decision_record.yaml
+agent: {history_alts: true}

@@ -1,0 +1,5 @@
+# Pro (10/11): như zs0p (54n/55n + 5 luật của 98) với model synth2-seed1 từ Kaggle (như 150, seed 1). So ghép cặp với zs0p (synth v1, seed 0).
+extends: zs0p_nbest4_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  llm: {model: models/qwen3-4b-sft-synth2-seed1}

@@ -1,0 +1,7 @@
+# Bản nộp 98t trong Docker: như configs/docker-synth-nbest.yaml nhưng thêm 3 luật chuẩn hoá và ngưỡng quyết định.
+# Dựng: CONFIG=configs/docker-threshold.yaml LLM=models/qwen3-4b-sft-full-synth TAG=lifemate:98t scripts/docker_build.sh
+extends: experiments/98t_submit_public_full-synth_threshold.yaml
+subset: all
+workers: 1
+agent:
+  time_budget: 25

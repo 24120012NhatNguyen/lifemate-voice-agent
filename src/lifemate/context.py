@@ -83,13 +83,18 @@ def schema(split: str, sample: dict, mode: str = "compact", specs: dict | None =
     return "\n".join(lines)
 
 
-def history(sample: dict, user_texts: dict[str, str], mode: str = "full") -> str:
-    """user_texts: {"u1": ..., "u2": ...} lấy từ tầng ASR (hoặc audio_text gold)."""
+def history(sample: dict, user_texts: dict[str, str], mode: str = "full", alts: dict | None = None) -> str:
+    """user_texts: {"u1": ..., "u2": ...} lấy từ tầng ASR (hoặc audio_text gold).
+    alts: {"u1": [bản nghe khác, ...]} từ N-best của tầng ASR; có thì in ngay dưới lượt user tương ứng."""
     out, k = [], 0
     for turn in sample.get("history", []):
         if turn.get("role") == "user":
             k += 1
-            out.append(f"USER: {user_texts.get(f'u{k}', '(không có bản chép)')}")
+            text = user_texts.get(f'u{k}', '(không có bản chép)')
+            out.append(f"USER: {text}")
+            other = [a for a in (alts or {}).get(f"u{k}", []) if a != text]
+            if other:
+                out.append("  (nghe khác: " + " | ".join(f'"{a}"' for a in other) + ")")
             continue
         out.append(f"ASSISTANT: {turn.get('text', '')}")
         calls = turn.get("tool_calls") or []

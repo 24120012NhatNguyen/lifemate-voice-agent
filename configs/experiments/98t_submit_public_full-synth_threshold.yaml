@@ -1,0 +1,5 @@
+# LM-25 (Pro, 10/11): bản nộp 98z (98s + 3 luật chuẩn hoá) + ngưỡng quyết định ở bước đầu như 132
+# (hỏi lại / stop 0,7; val ghép cặp với zs0p: val_random +0,81 ± 1,35, val_app +0,83 ± 0,44).
+extends: 98z_submit_public_full-synth_norm_nbest4.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: first, ask_min: 0.7, stop_min: 0.7}

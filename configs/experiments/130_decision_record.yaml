@@ -1,0 +1,6 @@
+# LM-25 (Pro, 10/11): như zs0p (54n/55n + model synth-pd + 5 luật của 98), ghi xác suất quyết định ở mỗi bước.
+# Chỉ ghi, không đổi hành vi: phải ra giống zs0p.
+extends: zs0p_nbest4_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  decision: {record: true}

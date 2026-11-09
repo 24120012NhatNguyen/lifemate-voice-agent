@@ -1,0 +1,4 @@
+# LM-25 (Pro): như 130, bước quyết định đầu bị cấm stop và hỏi lại. Chỉ để đo phản thực cho scripts/decision_sweep.py.
+extends: 130_decision_record.yaml
+agent:
+  decision: {record: true, force_act_first: true}

@@ -1,0 +1,5 @@
+# LM-25 (Pro, 10/11): bản nộp 98z + ngưỡng như 136 (bước đầu 0,7 / 0,7; bước sau chỉ ghi đè hỏi lại p < 0,7; tối đa 2 lần).
+extends: 98z_submit_public_full-synth_norm_nbest4.yaml
+agent:
+  decision: {record: true, mode: threshold, scope: pre_write, ask_min: 0.7, stop_min: 0.7, later_ask_min: 0.7,
+             later_stop_min: 0.0, max_overrides: 2}
