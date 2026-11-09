@@ -12,7 +12,7 @@ import json
 import re
 import time
 
-from .. import context, data, splits
+from .. import context, data, normalize, splits
 from ..config import REPO
 from ..numbers import calc
 from ..registry import register
@@ -71,7 +71,7 @@ def _read(path: str) -> str:
 class LLMAgent(Agent):
     def __init__(self, llm: dict | None = None, prompt="prompts/react_json.md", rules="prompts/rules/verified.md",
                  timetable="two_weeks", schema="compact", history="full", ledger=True, max_steps=8,
-                 show_alts=True, obs_chars=2500, calc=False, **_):
+                 show_alts=True, obs_chars=2500, calc=False, normalize_hint=False, **_):
         self.llm = LLM(**(llm or {}))
         self.template = _read(prompt)
         self.rules = _read(rules) if rules else ""
@@ -80,6 +80,7 @@ class LLMAgent(Agent):
         self.show_alts = show_alts
         self.obs_chars = obs_chars
         self.calc = calc
+        self.normalize_hint = normalize_hint  # khối giá trị máy đọc từ lời nói (normalize.py) trong prompt
 
     def system_prompt(self, split, sample, specs=None, rules=None) -> str:
         """specs, rules: thay catalog và luật (bản đổi tên khi dựng dữ liệu SFT); mặc định lấy của agent."""
@@ -102,6 +103,11 @@ class LLMAgent(Agent):
         alts = transcript.get("alts", {}).get("final")
         if self.show_alts and alts:
             parts.append("Bản nghe khác của cùng câu: " + " | ".join(f'"{a}"' for a in alts))
+        if self.normalize_hint:
+            block = normalize.hint(transcript if self.show_alts else {k: v for k, v in transcript.items() if k != "alts"},
+                                   sample["context"]["current_time"])
+            if block:
+                parts.append(block)
         return "\n\n".join(parts)
 
     def _obs(self, obs) -> str:

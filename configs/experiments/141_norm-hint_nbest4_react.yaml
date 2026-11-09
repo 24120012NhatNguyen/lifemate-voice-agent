@@ -1,0 +1,3 @@
+# Pro (pro/normalize): như 140, thêm khối giá trị máy đọc trong prompt (agent.normalize_hint)
+extends: 140_norm-fix_nbest4_react.yaml
+agent: {normalize_hint: true}

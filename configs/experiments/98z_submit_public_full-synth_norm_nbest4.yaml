@@ -1,0 +1,4 @@
+# Pro (pro/normalize): bản nộp 98s + 3 luật tầng N (phone_fix, rel_day_fix, now_offset_fix). Không bật khối gợi ý:
+# trên val 141 (luật + gợi ý) so với 140 (chỉ luật) là −0,51 ± 1,39 / +0,25 ± 1,02, model chưa train với khối này.
+extends: 98s_submit_public_full-synth_fixes_nbest4.yaml
+guards: {phone_fix: true, rel_day_fix: true, now_offset_fix: true}

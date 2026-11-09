@@ -10,6 +10,14 @@
     missing     ask_missing: số tiền khi lời chỉ nói "chút tiền", giờ hẹn khi không ai nói giờ: hỏi lại thay vì bịa
     pick_one    "hủy bớt một gói thôi" khi có nhiều gói: hỏi lại mục nào
 
+Ba luật dưới đây đọc giá trị bằng tầng N (normalize.py):
+
+    phone_fix       số điện thoại đọc từng chữ số ("không chín không một, hai ba bốn…"): tham số số điện thoại
+                    lệch số nói ra duy nhất thì lấy số nói ra
+    rel_day_fix     "sáu giờ chiều hôm trước" khi mốc là "thứ sáu này": ngày ghép với giờ trong cùng mệnh đề.
+                    clock_fix tắt khi lời có "hôm trước / hôm đó"; luật này lo đúng chỗ đó
+    now_offset_fix  "bốn lăm phút nữa": bây giờ + thời lượng, khi lời không nói giờ nào khác
+
 Giá trị đã có trong lịch sử hay kết quả tool, hoặc tính được một bước từ đó (numbers.derive), không bao giờ bị sửa.
 Bật mọi luật rồi chạy call gold của cả 1.545 mẫu train: không call nào đổi (tests/test_fixes.py).
 """
@@ -241,9 +249,10 @@ def spoken_span(text: str) -> int | None:
     return best
 
 
-def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, rules: dict) -> tuple[dict, list[str]]:
+def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, rules: dict,
+             past: str = "") -> tuple[dict, list[str]]:
     """Trả (tham số đã sửa, ghi chú từng chỗ sửa). seen: mọi chuỗi và số trong lịch sử và kết quả tool lượt này;
-    giá trị đã có ở đó coi là có nguồn, không sửa."""
+    giá trị đã có ở đó coi là có nguồn, không sửa. past: lời các lượt user trước (mốc "hôm đó" của rel_day_fix)."""
     props = (spec.get("parameters") or {}).get("properties", {})
     out, notes = dict(args), []
     norm = _norm(said)
@@ -256,6 +265,8 @@ def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, 
         ds, cs = spoken_dates(said, now), spoken_clocks(said)
         shifts = {}
         for k, v in args.items():
+            if not _temporal_prop(props.get(k, {})):
+                continue
             m = _ISO.match(v) if isinstance(v, str) else None
             if not m or _end_like(k) or v in seen or N.derive(v, said, [list(seen)], now, dates) is not None:
                 continue
@@ -280,6 +291,8 @@ def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, 
             (old, new), = list(shifts.values())[:1]
             delta = datetime.fromisoformat(new) - datetime.fromisoformat(old) if "T" in old else None
             for k, v in args.items():
+                if not _temporal_prop(props.get(k, {})):
+                    continue
                 if delta and _end_like(k) and isinstance(v, str) and _ISO.match(v) and "T" in v and v not in seen:
                     out[k] = (datetime.fromisoformat(v) + delta).isoformat()
                     notes.append(f"clock_fix {k}: {v} → {out[k]}")
@@ -295,6 +308,144 @@ def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, 
             if span and span != v:
                 out[k] = span
                 notes.append(f"span_min {k}: {v} → {span}")
+    if rules.get("phone_fix"):
+        out, more = _phone_fix(out, props, said, seen)
+        notes += more
+    if rules.get("rel_day_fix"):
+        out, more = _rel_day_fix(out, said, now, seen, past, props=props)
+        notes += more
+    if rules.get("now_offset_fix"):
+        out, more = _now_offset_fix(out, said, now, seen, props=props)
+        notes += more
+    return out, notes
+
+
+def _is_phone_param(key: str, prop: dict) -> bool:
+    desc = str(prop.get("description", "")).lower()
+    return "phone" in key.lower() or "điện thoại" in desc or "số máy" in desc
+
+
+def _phone_fix(args: dict, props: dict, said: str, seen: set) -> tuple[dict, list[str]]:
+    """Tham số số điện thoại lệch số nói ra duy nhất (normalize.phones) thì lấy số nói ra; cùng chữ số mà khác cách
+    viết ("0901 234 567", "+84901…") thì viết lại dạng liền. Số đã có trong lịch sử hay kết quả tool không sửa."""
+    from . import normalize as Z
+    spoken = Z.phones(said)
+    out, notes = dict(args), []
+    # A unique mentioned number can be the explicitly rejected target.
+    if len(spoken) != 1 or re.search(r"\b(?:đừng|chớ)\b|\bkhông\s+(?:gọi|nạp|đổi)\b", _norm(said)):
+        return out, notes
+    for k, v in args.items():
+        if not isinstance(v, str) or v in seen or not _is_phone_param(k, props.get(k, {})):
+            continue
+        if v != spoken[0]:
+            out[k] = spoken[0]
+            notes.append(f"phone_fix {k}: {v} → {spoken[0]}")
+    return out, notes
+
+
+def _temporal_prop(prop: dict) -> bool:
+    """Free text may itself be an ISO string; only rewrite schema date/time parameters."""
+    return prop.get("format") in ("date", "date-time") or bool(
+        re.search(r"ISO|YYYY-MM-DD", prop.get("description", ""), re.I))
+
+
+def _rel_day_fix(args: dict, said: str, now: str, seen: set, past: str = "", *, props: dict | None = None) -> tuple[dict, list[str]]:
+    """Lời có ngày tính theo mốc ("hôm trước", "hôm đó", "trước … một ngày") với mốc là ngày nói rõ duy nhất:
+
+    - Tham số ngày giờ: nếu giờ của nó được lời ghép với đúng một ngày (normalize.day_for_clock), mà ngày của tham số
+      khác ngày đó, thì sửa ngày. Giờ lệch sáng / chiều mà khớp đúng một giờ ghép thì sửa cả giờ.
+    - Tham số chỉ có ngày: lấy ngày tính theo mốc khi mệnh đề đó không nói giờ; nếu mọi ngày tính theo mốc đã đi với
+      giờ (tức thuộc tham số ngày giờ), thì tham số chỉ ngày lấy ngày mốc.
+    - Dời giờ bắt đầu thì dời giờ kết thúc theo, giữ thời lượng.
+
+    Không đụng giá trị có nguồn (seen) hay giá trị tính được một bước (numbers.derive). Khác clock_fix, ngày
+    chỉ trùng một ngày trong dữ liệu vẫn được sửa: lời đã neo ngày rõ ("hôm trước" của ngày nói ra), còn ngày trong
+    dữ liệu thường là hôm nay hay ngày trống bất kỳ."""
+    from . import normalize as Z
+    from .context import timetable_dates
+    # Mốc nằm ngay trong cụm dời ("trước thứ sáu tuần này một ngày") chỉ dùng cho gợi ý: qua ASR, cụm này hay bị nghe
+    # nhầm ("trước bữa Tí bay một ngày" thành "trước bữa thứ bảy một ngày"), nên luật sửa không dựa vào nó.
+    anchors = [a for a in Z.anchored(said, now, past) if not a.inner]
+    out, notes = dict(args), []
+    if not anchors:
+        return out, notes
+    dates = timetable_dates(now)
+    by_clock = Z.day_for_clock(said, now, past)
+    free = [a for a in anchors if not a.clocks]
+    base = anchors[0].base
+    shifts = {}
+    for k, v in args.items():
+        if props is not None and not _temporal_prop(props.get(k, {})):
+            continue
+        m = _ISO.match(v) if isinstance(v, str) else None
+        if not m or _end_like(k) or v in seen or N.derive(v, said, [list(seen)], now, dates) is not None:
+            continue
+        d, t = m.group(1), m.group(2)
+        new = None
+        if t is None:
+            if d in spoken_dates(said, now):
+                continue  # explicit base date may belong to this action; do not steal another action's relative day
+            want = free[0].day if len(free) == 1 else (base if not free else None)
+            if want and d != want:
+                new = want
+        else:
+            days = by_clock.get(t)
+            nt = None
+            if days is None:  # sai sáng / chiều: cùng giờ trên mặt đồng hồ với đúng một giờ được ghép
+                same = [c for c in by_clock if int(c[:2]) % 12 == int(t[:2]) % 12 and c[3:] == t[3:]]
+                if len(same) == 1:
+                    nt, days = same[0], by_clock[same[0]]
+            if days and len(days) == 1:
+                (want,) = days
+                if d != want or nt:
+                    new = _shift(v, want, nt)
+        if new and new != v:
+            out[k] = new
+            shifts[k] = (v, new)
+            notes.append(f"rel_day_fix {k}: {v} → {new}")
+    if shifts:
+        (old, new), = list(shifts.values())[:1]
+        delta = datetime.fromisoformat(new) - datetime.fromisoformat(old) if "T" in old else None
+        for k, v in args.items():
+            if props is not None and not _temporal_prop(props.get(k, {})):
+                continue
+            if delta and _end_like(k) and isinstance(v, str) and _ISO.match(v) and "T" in v and v not in seen:
+                out[k] = (datetime.fromisoformat(v) + delta).isoformat()
+                notes.append(f"rel_day_fix {k}: {v} → {out[k]}")
+    return out, notes
+
+
+def _now_offset_fix(args: dict, said: str, now: str, seen: set, *, props: dict | None = None) -> tuple[dict, list[str]]:
+    """"Bốn lăm phút nữa nhắc chị": tham số ngày giờ (không phải giờ kết thúc) lệch bây giờ + thời lượng thì sửa, khi
+    lời có đúng một cụm "… nữa", không nói giờ nào trong ngày, và giá trị không có nguồn."""
+    from . import normalize as Z
+    from .context import timetable_dates
+    cands = [x for x in Z.now_offsets(said, now) if "T" in x]
+    out, notes = dict(args), []
+    if len(cands) != 1 or spoken_clocks(said):
+        return out, notes
+    want = cands[0]
+    dates = timetable_dates(now)
+    shifts = []
+    for k, v in args.items():
+        if props is not None and not _temporal_prop(props.get(k, {})):
+            continue
+        m = _ISO.match(v) if isinstance(v, str) else None
+        if not m or not m.group(2) or _end_like(k) or v in seen:
+            continue
+        if N.derive(v, said, [list(seen)], now, dates) is not None:
+            continue
+        if datetime.fromisoformat(v) != datetime.fromisoformat(want):
+            out[k] = want
+            shifts.append(datetime.fromisoformat(want) - datetime.fromisoformat(v))
+            notes.append(f"now_offset_fix {k}: {v} → {want}")
+    if len(shifts) == 1:
+        for k, v in args.items():
+            if props is not None and not _temporal_prop(props.get(k, {})):
+                continue
+            if _end_like(k) and isinstance(v, str) and _ISO.match(v) and "T" in v and v not in seen:
+                out[k] = (datetime.fromisoformat(v) + shifts[0]).isoformat()
+                notes.append(f"now_offset_fix {k}: {v} → {out[k]}")
     return out, notes
 
 

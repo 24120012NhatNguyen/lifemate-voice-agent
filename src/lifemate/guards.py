@@ -10,6 +10,9 @@
     clock_fix          true | false     ngày giờ ISO lệch ngày / giờ nói ra (sai sáng chiều, "9 giờ kém 15 tối") (fixes.py)
     money_k            true | false     số tiền VND dưới 1.000 nhân 1.000 ("hai trăm", ASR mất "nghìn")
     span_min           true | false     tham số phút = hiệu hai giờ trong "từ 7 rưỡi tới 8 giờ 10"
+    phone_fix          true | false     số điện thoại đọc từng chữ số: lấy số nói ra (normalize.phones)
+    rel_day_fix        true | false     "sáu giờ chiều hôm trước" khi mốc là "thứ sáu này": ngày ghép với giờ cùng mệnh đề
+    now_offset_fix     true | false     "bốn lăm phút nữa": bây giờ + thời lượng khi lời không nói giờ nào
     ask_missing        true | false     số tiền "chút tiền" hay giờ hẹn không có nguồn: hỏi lại thay vì chạy
     pick_one           true | false     "hủy bớt một gói thôi": hỏi lại mục nào thay vì chọn bừa
 
@@ -38,10 +41,13 @@ DEFAULTS = {
     "clock_fix": False,
     "money_k": False,
     "span_min": False,
+    "phone_fix": False,
+    "rel_day_fix": False,
+    "now_offset_fix": False,
     "ask_missing": False,
     "pick_one": False,
 }
-FIX_RULES = ("clock_fix", "money_k", "span_min")
+FIX_RULES = ("clock_fix", "money_k", "span_min", "phone_fix", "rel_day_fix", "now_offset_fix")
 
 
 class GuardedEnv:
@@ -60,8 +66,9 @@ class GuardedEnv:
         self.log: list[dict] = []  # mỗi lần agent đề nghị một call: đề nghị, sau chuẩn hoá, quyết định, kết quả
         self.utterance = transcript
         self.now = sample["context"]["current_time"]
-        past = list(turns.values()) if turns else [t.get("audio_text", "") for t in sample.get("history", []) if t.get("role") == "user"]
+        past = list(turns.values()) if turns is not None else [t.get("audio_text", "") for t in sample.get("history", []) if t.get("role") == "user"]
         self.said_all = " ".join([transcript, *past])
+        self.past_text = " ".join(past)
         self.seen: set = set()  # mọi chuỗi, số đã thấy: giá trị có nguồn thì luật fixes không đụng
         self.asked: set[str] = set()  # tool đã hỏi lại (do luật hay do LLM tự gọi sys.ask_missing_info)
         self.llm_asked: set[str] = set()
@@ -115,7 +122,7 @@ class GuardedEnv:
         self.fix_notes = []
         if any(self.cfg[r] for r in FIX_RULES) and self.specs.get(name, {}).get("kind") == "write":
             clean, self.fix_notes = fixes.fix_args(name, clean, self.specs[name], self.utterance, self.now, self.seen,
-                                                   {r: self.cfg[r] for r in FIX_RULES})
+                                                   {r: self.cfg[r] for r in FIX_RULES}, past=self.past_text)
         if self.cfg["calendar_duration"] and name == "calendar.update_event":
             ev = clean.get("event_id")
             if ev in self.events and "start" in clean and "end" not in clean:
