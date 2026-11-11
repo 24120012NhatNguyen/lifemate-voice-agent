@@ -1,0 +1,4 @@
+# Pro (10/11): bản nộp 98z (98s + 3 luật chuẩn hoá) với agent full-mix600 từ Kaggle nbinh: cả train + 600 synth v1 + 600 synth v2. Không bật ngưỡng.
+extends: 98z_submit_public_full-synth_norm_nbest4.yaml
+agent:
+  llm: {model: models/qwen3-4b-sft-full-mix600}

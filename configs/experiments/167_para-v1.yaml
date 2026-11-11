@@ -1,0 +1,5 @@
+# Pro (11/11): như zs0p (N-best 4 + 5 luật của 98), model SFT trên dữ liệu zs0p + dữ liệu teacher của LM-41 (para-v1). So ghép cặp với zs0p (56,43 / 43,94).
+extends: zs0p_nbest4_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  llm: {model: models/qwen3-4b-sft-para-v1}

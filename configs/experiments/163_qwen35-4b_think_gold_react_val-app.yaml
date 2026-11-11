@@ -1,0 +1,4 @@
+# Pro (10/11): như 160 nhưng BẬT thinking của Qwen3.5-4B (vLLM --reasoning-parser qwen3 tách phần suy nghĩ, phần content vẫn là JSON theo schema). max_tokens 3000 mỗi lượt; đo cả độ trễ để biết có vừa 30 s / mẫu không.
+extends: 11_qwen3-4b_gold_react_val-app.yaml
+agent:
+  llm: {model: Qwen/Qwen3.5-4B, max_tokens: 3000, timeout: 120, extra_body: {chat_template_kwargs: {enable_thinking: true}}}

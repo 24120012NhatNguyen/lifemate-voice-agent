@@ -1,0 +1,5 @@
+# Pro (11/11): đầu-cuối như zs0p (ASR N-best 4 + 5 luật của 98) nhưng LLM là Qwen3.5-4B GỐC (không SFT) bật thinking. So ghép cặp với zs0p (SFT Qwen3-4B, 56,43 / 43,94). Đo cả độ trễ.
+extends: zs0p_nbest4_react_val-app.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  llm: {model: Qwen/Qwen3.5-4B, max_tokens: 3000, timeout: 120, extra_body: {chat_template_kwargs: {enable_thinking: true}}}

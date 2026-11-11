@@ -1,0 +1,4 @@
+# Pro (11/11): thăm dò public cho backbone mới. Như 98z (N-best 4, 5 luật + 3 luật chuẩn hoá), agent là Qwen3.5-4B chỉ văn bản SFT trên dữ liệu zs0p (train_rest + 600 synth; KHÔNG phải bản full). Val của đúng model này: 46,28 / 66,99 (161). Phục vụ với --chat-template prompts/qwen35_scaffold.jinja, DETERMINISTIC=0.
+extends: 98z_submit_public_full-synth_norm_nbest4.yaml
+agent:
+  llm: {model: models/qwen35-4b-sft-synth, extra_body: {chat_template_kwargs: {enable_thinking: false}}}

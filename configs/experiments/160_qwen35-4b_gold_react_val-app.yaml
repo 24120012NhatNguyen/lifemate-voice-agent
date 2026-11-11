@@ -1,0 +1,4 @@
+# Pro (10/11): sàng lọc backbone. Như 11_qwen3-4b_gold_react_val-app.yaml (model gốc, chỉ prompt, bản chép gold) nhưng LLM là Qwen3.5-4B (27/02/2026, Apache-2.0, phần văn bản 4,21B), tắt thinking. So với 11_qwen3-4b_gold_react_val-app.yaml chạy cùng lúc.
+extends: 11_qwen3-4b_gold_react_val-app.yaml
+agent:
+  llm: {model: Qwen/Qwen3.5-4B, extra_body: {chat_template_kwargs: {enable_thinking: false}}}

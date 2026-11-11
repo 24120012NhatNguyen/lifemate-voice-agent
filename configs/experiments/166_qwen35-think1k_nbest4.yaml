@@ -1,0 +1,4 @@
+# Pro (11/11): như 165 nhưng mỗi lượt tối đa 1.024 token (suy nghĩ + hành động), để xem điểm và độ trễ đổi thế nào khi siết ngân sách suy nghĩ.
+extends: 165_qwen35-think_nbest4.yaml
+agent:
+  llm: {max_tokens: 1024}

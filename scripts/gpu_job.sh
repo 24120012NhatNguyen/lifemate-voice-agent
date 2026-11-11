@@ -36,7 +36,7 @@ case "$kind" in
     model=$1; shift
     if curl -sf localhost:8000/v1/models >/dev/null; then echo "cổng 8000 đang có server khác"; rc=3; exit $rc; fi
     note "TAKE gpu.lock, vLLM $model + eval"
-    DETERMINISTIC=1 MODEL="$model" setsid scripts/serve_vllm.sh > "logs/vllm_$(basename "$model").log" 2>&1 &
+    DETERMINISTIC=${DETERMINISTIC:-1} MODEL="$model" setsid scripts/serve_vllm.sh > "logs/vllm_$(basename "$model").log" 2>&1 &
     vpid=$!
     for _ in $(seq 120); do
       curl -s localhost:8000/v1/models | grep -qF "\"$model\"" && break

@@ -1,0 +1,5 @@
+# Pro (11/11): như 161 nhưng dữ liệu para-v1 (zs0p + 1.949 câu diễn đạt lại D1). Hai cải tiến (backbone Qwen3.5 và D1) gộp lại. So với 161 (46,28 / 66,99) và 167 (46,7 / 67,2).
+extends: zs0p_nbest4_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  llm: {model: models/qwen35-4b-sft-para-v1, extra_body: {chat_template_kwargs: {enable_thinking: false}}}

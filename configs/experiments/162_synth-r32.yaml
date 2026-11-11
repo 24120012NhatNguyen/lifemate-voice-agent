@@ -1,0 +1,5 @@
+# Pro (10/11): như zs0p (54n/55n + 5 luật của 98), model SFT cùng dữ liệu train_synth.jsonl (sha b251018b) nhưng LoRA r=32, alpha=64 (zs0p: r=16, alpha=32), train ở GPU nhà bf16 như zs0p. Gợi ý từ báo cáo Argon vòng 2 (arXiv 2609.17848).
+extends: zs0p_nbest4_react.yaml
+guards: {clock_fix: true, money_k: true, span_min: true, ask_missing: true, pick_one: true}
+agent:
+  llm: {model: models/qwen3-4b-sft-synth-r32}

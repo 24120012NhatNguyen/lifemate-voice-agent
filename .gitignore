@@ -48,3 +48,6 @@ venv/
 .claude/
 .cursor/
 .DS_Store
+
+# Local kernel packages for Qwen3.5 training (pip --target)
+.q35-deps/

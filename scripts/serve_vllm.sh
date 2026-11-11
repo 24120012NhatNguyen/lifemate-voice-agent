@@ -12,4 +12,4 @@ exec "$HERE/.venv-vllm/bin/vllm" serve "$MODEL" \
   --gpu-memory-utilization "${GPU_UTIL:-0.85}" \
   --enable-prefix-caching \
   --enable-auto-tool-choice --tool-call-parser hermes \
-  --seed 0 "$@"
+  --seed 0 ${VLLM_EXTRA:-} "$@"
