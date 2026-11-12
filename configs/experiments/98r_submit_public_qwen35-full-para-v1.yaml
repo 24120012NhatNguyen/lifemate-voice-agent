@@ -1,0 +1,4 @@
+# Pro (11/11): ứng viên nộp. Như 98q nhưng model là Qwen3.5-4B chỉ văn bản SFT trên toàn bộ train + 600 synth + 2.991 câu D1 (cùng dữ liệu với 98p). Model val tương ứng: 169 (Qwen3.5 + D1 trên train_rest). So với 98q 56,11 và 98p 56,63.
+extends: 98z_submit_public_full-synth_norm_nbest4.yaml
+agent:
+  llm: {model: models/qwen35-4b-sft-full-para-v1, extra_body: {chat_template_kwargs: {enable_thinking: false}}}

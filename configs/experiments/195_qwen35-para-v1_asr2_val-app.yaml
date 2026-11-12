@@ -1,0 +1,3 @@
+# Pro (12/11): như 169 (49,10 / 72,98) nhưng agent thấy thêm bản chép greedy của ASR v2 (phowhisper-large-ft2, cùng chỉ học train_rest) làm phương án đầu, khi nó khác cả 4 bản N-best của v1. Trên val: v2 thêm phương án mới ở 242/526 mẫu, tốt hơn mọi bản v1 ở 51 mẫu. Không train lại, không chạy lại ASR (cả hai đã có cache).
+extends: 169_qwen35-para-v1_val-app.yaml
+asr: {merge_with: {model: models/phowhisper-large-ft2, num_beams: 1, batch_size: 16}}

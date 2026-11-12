@@ -1,0 +1,7 @@
+# Pro (12/11 19:58): như 195 (50,81 / 74,74) nhưng ASR ghép (phowhisper-large-ft2) chạy CÓ mồi profile_history_apps, đúng
+# kiểu ft2 đã học lúc train (train_info.json: hint profile_history_apps, hint_prob 0,5); 195 và 98r3 chạy nó không mồi.
+# Căn cứ offline trên 526 mẫu val (so bản chép đúng): WER ft2 12,27 → 11,14% (va), 9,79 → 9,52% (vr); tốt hơn 75 / tệ hơn
+# 29 mẫu (va), 28 / 21 (vr); oracle WER của tập phương án agent thấy 9,02 → 8,52% (va), 7,01 → 7,01% (vr). Không train,
+# không chạy lại ASR (cache hf_whisper_e22089fe0b có sẵn từ 08/11).
+extends: 195_qwen35-para-v1_asr2.yaml
+asr: {merge_with: {model: models/phowhisper-large-ft2, num_beams: 1, batch_size: 16, hint: profile_history_apps}}

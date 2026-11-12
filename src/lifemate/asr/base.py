@@ -76,9 +76,21 @@ def app_phrases(split: str) -> dict[str, list[str]]:
 
 
 @lru_cache(maxsize=None)
-def _app_rank(split: str) -> dict[str, int]:
-    """App ít được cài đứng trước: từ vựng của app phổ biến (thời tiết, lịch) mô hình fine-tune đã quen."""
-    n = Counter(app for s in data.samples(split) for app in s["context"]["installed_apps"])
+def _app_rank() -> dict[str, int]:
+    """App ít được cài đứng trước: từ vựng của app phổ biến (thời tiết, lịch) mô hình fine-tune đã quen.
+
+    Luôn đếm trên train, đúng thứ tự lúc train ASR (finetune_whisper.py gọi bias_hint với split train), nên mỗi mẫu test
+    được mồi độc lập, không dùng thống kê chéo các mẫu test; app chưa có ở train đứng đầu (hạng -1). Docker không mang
+    train: đọc $LIFEMATE_APP_RANK, file JSON do scripts/export_app_rank.py ghi cạnh model ASR.
+    """
+    f = os.environ.get("LIFEMATE_APP_RANK")
+    if f:
+        return json.loads(Path(f).read_text(encoding="utf-8"))
+    try:
+        n = Counter(app for s in data.samples("train") for app in s["context"]["installed_apps"])
+    except FileNotFoundError:
+        print("CẢNH BÁO: không có train lẫn $LIFEMATE_APP_RANK; mồi app giữ thứ tự installed_apps", flush=True)
+        return {}
     return {app: i for i, (app, _) in enumerate(sorted(n.items(), key=lambda kv: (kv[1], kv[0])))}
 
 
@@ -119,7 +131,7 @@ def bias_hint(sample: dict, mode: str, split: str = "train") -> str:
             out.append(w)
     out = out[:30]
     if mode.endswith("_apps"):
-        rank, vocab = _app_rank(split), app_phrases(split)
+        rank, vocab = _app_rank(), app_phrases(split)
         seen = {w.lower() for w in out}
         for app in sorted(sample["context"]["installed_apps"], key=lambda a: rank.get(a, -1)):
             for w in vocab.get(app, []):
@@ -129,11 +141,17 @@ def bias_hint(sample: dict, mode: str, split: str = "train") -> str:
     return ", ".join(out)
 
 
+def _plain(text: str) -> str:
+    """Bản chép bỏ dấu câu và hoa thường, để hai ASR chỉ khác dấu phẩy không thành hai phương án."""
+    return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
 def run_asr(split: str, samples: list[dict], cfg: dict, log=print) -> dict[str, dict]:
     """Chạy (hoặc lấy từ cache) transcript thô cho các mẫu, rồi áp các bước hậu xử lý trong cfg["asr_post"]."""
     asr_cfg = dict(cfg.get("asr") or {"name": "gold"})
     with_history = asr_cfg.pop("history", True)
     hint_mode = asr_cfg.pop("hint", "none")
+    merge = asr_cfg.pop("merge_with", None)  # ASR thứ hai: bản chép lượt cuối của nó thành phương án đầu (không đổi khoá cache)
     key = stage_key(split, asr_cfg, with_history, hint_mode)
     cache = Path(os.environ.get("LIFEMATE_CACHE", REPO / "cache")) / "asr" / split / f"{asr_cfg['name']}_{key}.jsonl"
     done: dict[str, dict] = {}
@@ -176,6 +194,13 @@ def run_asr(split: str, samples: list[dict], cfg: dict, log=print) -> dict[str, 
                     log(f"  ASR {n}/{len(todo)}")
         engine.close()
     out = {s["id"]: dict(done[s["id"]]) for s in samples}
+    if merge:
+        other = run_asr(split, samples, {"asr": {"name": asr_cfg["name"], "history": with_history, **merge}}, log)
+        for sid, row in out.items():
+            extra = other[sid]["final"]
+            alts = list((row.get("alts") or {}).get("final") or [])
+            if extra and _plain(extra) not in {_plain(x) for x in [row["final"], *alts]}:
+                row["alts"] = {**(row.get("alts") or {}), "final": [extra, *alts]}
     for post in cfg.get("asr_post") or []:
         step = build("asr_post", post)
         for s in samples:

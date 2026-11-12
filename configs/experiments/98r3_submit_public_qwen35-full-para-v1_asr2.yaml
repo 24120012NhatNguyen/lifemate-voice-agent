@@ -1,0 +1,3 @@
+# Pro (12/11 03:30): 98r (public 62,53) + bản chép greedy của ASR ft2-all làm phương án đầu cho agent (cờ asr.merge_with), đúng công thức 195. Trên val, 195 so với 169: +1,71 ± 1,12 val_app (tốt 14, tệ 8), +1,76 ± 0,97 val_random (tốt 9, tệ 1). ASR chính vẫn là v1 N-best 4 (cache public có sẵn); chỉ phải chép public thêm một lượt greedy bằng ft2-all.
+extends: 98r_submit_public_qwen35-full-para-v1.yaml
+asr: {merge_with: {model: models/phowhisper-large-ft2-all, num_beams: 1, batch_size: 16}}

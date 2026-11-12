@@ -111,3 +111,18 @@ def test_hint_names_and_app_vocab():
 def test_nbest_alts_differ_in_words():
     assert _distinct("Giao hàng nhé.", ["giao hàng nhé", "Sao hàng nhé.", "Sao hàng, nhé", "Giao hàng nha."]) == \
         ["Sao hàng nhé.", "Giao hàng nha."]
+
+
+def test_app_rank_counts_train_only(monkeypatch, tmp_path):
+    """Thứ hạng mồi app luôn lấy từ train (hoặc file $LIFEMATE_APP_RANK), không đếm trên tập đang chạy."""
+    import json as _json
+
+    from lifemate.asr import base
+    base._app_rank.cache_clear()
+    f = tmp_path / "rank.json"
+    f.write_text(_json.dumps({"zeta": 0, "alpha": 5}), encoding="utf-8")
+    monkeypatch.setenv("LIFEMATE_APP_RANK", str(f))
+    try:
+        assert base._app_rank() == {"zeta": 0, "alpha": 5}
+    finally:
+        base._app_rank.cache_clear()
