@@ -1,0 +1,14 @@
+app/dataset.py:60:        "`public_test/public_test.jsonl` chỉ có đầu vào. Không có private test trước khi nộp Docker.")
+kaggle/run_sft.py:37:    # bản nộp: cả 1.545 mẫu, không đo được trên val nữa (configs 91, 92 chạy public_test)
+scripts/asr_latency.py:5:    .venv/bin/python scripts/asr_latency.py --split public_test --out asr_latency.json
+scripts/asr_latency.py:23:    ap.add_argument("--split", default="public_test")
+scripts/docker_check.sh:2:# Kiểm tra nấc 6 trên cả public_test: các lượt chạy từ đầu (ASR, khởi động vLLM, agent) phải ra cùng file nộp từng
+scripts/docker_check.sh:6:# Biến: IMAGE, DATA (gói dữ liệu, chứa public_test/), OUT (mặc định artifacts/docker_check/<giờ>_<mode>), REF (file
+scripts/docker_check.sh:8:# Kiểm trên tập val của train thay cho public_test (LM-50; model 161 không train trên val):
+scripts/docker_check.sh:32:LAT=(--split "${SPLIT:-public_test}" --subset "${SUBSET:-all}" ${LIMIT:+--limit "$LIMIT"}
+src/lifemate/data.py:3:`zaic_tools` của train và public_test khác nhau (`utils.py`: LIVE_APPS, FREE_TEXT_KEYS), nên mỗi split nạp
+src/lifemate/data.py:21:    """Thư mục chứa train/ và public_test/: biến LIFEMATE_DATA, hoặc tìm `data/lifemate` ở các thư mục cha."""
+src/lifemate/guards.py:29:Call bị hoãn trả `ok: true` kèm ghi chú: trả `ok: false` thì agent cũng dừng (train_0352, public_0033).
+tests/test_lm25_review.py:117:        result = a.run('public_test', sample, transcript or {'final': 'x'}, env)
+tests/test_normalize.py:356:    """public_0232: ASR "hai lăm lăm phút nữa" từng đọc ra 5 phút; cụm số đọc sai luật thì không đọc."""
+tests/test_normalize.py:362:    """public_0542: "năm giờ chiều hôm trước ngày bay" có mốc là ngày bay trong dữ liệu; không được neo vào ngày nói ở

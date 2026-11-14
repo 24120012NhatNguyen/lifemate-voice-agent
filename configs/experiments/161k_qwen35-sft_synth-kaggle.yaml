@@ -1,0 +1,6 @@
+# LM-50 (Fable): lặp lại 161 với model train trên Kaggle T4 ×2 (scripts/kaggle_q35.sh push ... synth-k sft/train_synth.jsonl):
+# cùng dữ liệu, seed, siêu tham số với 161, khác ở fp16 + GradScaler, 2 rank DDP và kernel FLA. Đạt khi lệch 161
+# (46,28 / 66,99) không quá 1,5 điểm mỗi tập. Phục vụ như 161 (--chat-template prompts/qwen35_scaffold.jinja).
+extends: 161_qwen35-sft_synth.yaml
+agent:
+  llm: {model: models/qwen35-4b-sft-synth-k}

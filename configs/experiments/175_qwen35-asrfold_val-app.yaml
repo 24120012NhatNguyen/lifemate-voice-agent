@@ -1,0 +1,4 @@
+# LM-51: như 169_val-app nhưng dữ liệu = train_para_v1 (của 169, nguyên văn) + bản lỗi của 1.018 mẫu train_rest: bản chép theo fold (config 181, ASR chưa từng nghe câu đó, beam 4, 4 phương án) kèm khối "Bản nghe khác", cùng đáp án gold; bỏ bản lỗi khi mọi phương án đều mất một giá trị của call gold (build_sft.py --asr-only --asr-keep-entities-nbest). So ghép cặp với 169 (49,10 / 72,98).
+extends: 169_qwen35-para-v1_val-app.yaml
+agent:
+  llm: {model: models/qwen35-4b-sft-asrfold}

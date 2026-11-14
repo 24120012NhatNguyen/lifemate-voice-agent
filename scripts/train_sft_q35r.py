@@ -53,7 +53,10 @@ LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", 
 # Pro (11/11): Qwen3.5 chỉ văn bản (model_type qwen3_5_text, xuất bởi LM-43). Thêm 5 phép chiếu Linear của 24 khối DeltaNet.
 QWEN35_LORA_TARGETS = LORA_TARGETS + ["in_proj_qkv", "in_proj_z", "in_proj_b", "in_proj_a", "out_proj"]
 SCAFFOLD = "<think>\n\n</think>\n\n"
-SCAFFOLD_TEMPLATE = REPO / "prompts" / "qwen35_scaffold.jinja"
+# Trong repo: prompts/qwen35_scaffold.jinja. Trong gói Kaggle (thư mục phẳng): file nằm cạnh script này.
+SCAFFOLD_TEMPLATE = next((p for p in (REPO / "prompts" / "qwen35_scaffold.jinja",
+                                      Path(__file__).resolve().with_name("qwen35_scaffold.jinja")) if p.exists()),
+                         REPO / "prompts" / "qwen35_scaffold.jinja")
 
 
 def lora_modules(model) -> list[str]:
@@ -64,6 +67,23 @@ def lora_modules(model) -> list[str]:
     if missing:
         raise ValueError(f"thiếu module LoRA: {sorted(missing)}")
     return names
+
+
+def keep_efficient_sdpa(dev: torch.device, say=print) -> None:
+    """GPU trước Ampere (T4, sm75) không có kernel flash của scaled_dot_product_attention. Với Qwen3.5 (16 đầu
+    attention, 4 đầu K/V, head_dim 256, không có mask) Transformers gọi SDPA với enable_gqa=True; không có flash thì
+    PyTorch rơi về đường "math" và dựng cả ma trận attention 16 × L × L (1,27 GiB ở 6.500 token, vài bản trong
+    backward): smoke Kaggle 11/11 hết 14,56 GiB ngay bước đầu ở cả hai kernel GDN. Ép Transformers lặp K/V theo nhóm
+    (repeat_kv, đường mặc định khi có mask) để SDPA dùng được kernel tiết kiệm bộ nhớ. GPU từ Ampere trở lên không đổi."""
+    if dev.type != "cuda" or torch.cuda.get_device_capability(dev)[0] >= 8:
+        return
+    try:
+        from transformers.integrations import sdpa_attention
+    except ImportError:
+        return
+    if hasattr(sdpa_attention, "use_gqa_in_sdpa"):
+        sdpa_attention.use_gqa_in_sdpa = lambda *args, **kwargs: False
+        say("GPU trước Ampere: SDPA không dùng enable_gqa (lặp K/V theo nhóm) để giữ kernel tiết kiệm bộ nhớ", flush=True)
 
 
 def encode_scaffold(tok, messages: list[dict]) -> tuple[list[int], list[int], str]:
@@ -330,6 +350,8 @@ def main(argv=None):
     where = torch.cuda.get_device_name(dev) if dev.type == "cuda" else "CPU"
     say(f"{where}: {a.dtype}" + (", GradScaler bật" if scaler.is_enabled() else "") + (f", {world} rank" if world > 1 else ""),
         flush=True)
+    if q35:
+        keep_efficient_sdpa(dev, say)
     model = AutoModelForCausalLM.from_pretrained(a.base, dtype=dtype, attn_implementation="sdpa").to(dev)
     model.config.use_cache = False
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})

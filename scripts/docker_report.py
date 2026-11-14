@@ -3,6 +3,7 @@ và so file nộp giữa các lượt (nấc 6: hai lượt phải ra cùng từ
 
     .venv/bin/python scripts/docker_report.py OUT [--models models/phowhisper-large-ft models/qwen3-4b-sft-full]
     .venv/bin/python scripts/docker_report.py OUT1 OUT2 [--ref runs/<lượt 98>/predictions.jsonl]
+    .venv/bin/python scripts/docker_report.py --params-only --models models/phowhisper-large-ft models/qwen35-4b-sft-synth
 
 Độ trễ mỗi mẫu = sec_agent + sec_asr. sec_asr của lượt nộp là phần chia đều của ASR theo lô; có OUT/asr_latency.json
 (scripts/asr_latency.py, mỗi mẫu chạy ASR một mình) thì báo thêm độ trễ khi mỗi mẫu đi trọn một mình.
@@ -34,6 +35,43 @@ def params(model_dir: Path) -> int:
                     c *= s
                 n += c
     return n
+
+
+LIMIT_TOTAL = 6_000_000_000  # đề LifeMate: tổng tham số mọi model dưới 6 tỷ (FAQ của BTC, mục cách tính tham số)
+
+
+def param_table(models: list[str]) -> dict:
+    """Bảng đếm tham số từ header safetensors của từng thư mục model, để đối chiếu luật: tổng dưới 6 tỷ; LLM chỉ văn
+    bản không còn tensor vision; LoRA đã gộp nên không còn tensor lora_ (LoRA để riêng thì vẫn phải tính)."""
+    rows = {}
+    for m in models:
+        d = Path(m) if Path(m).is_absolute() else REPO / m
+        n = lora = vision = 0
+        for f in sorted(d.glob("*.safetensors")):
+            with f.open("rb") as fh:
+                header = json.loads(fh.read(struct.unpack("<Q", fh.read(8))[0]))
+            for k, v in header.items():
+                if k == "__metadata__":
+                    continue
+                c = 1
+                for s in v["shape"]:
+                    c *= s
+                n += c
+                lora += "lora_" in k
+                vision += ".visual." in k or k.startswith("visual.")
+        rows[m] = {"params": n, "lora_tensors": lora, "vision_tensors": vision,
+                   "adapter_files": sorted(p.name for p in d.glob("adapter_*"))}
+    total = sum(r["params"] for r in rows.values())
+    return {"models": rows, "total": total, "limit": LIMIT_TOTAL, "under_limit": total < LIMIT_TOTAL}
+
+
+def print_param_table(t: dict) -> None:
+    print("| Model | Tham số (đếm từ safetensors) | Tensor LoRA | Tensor vision |")
+    print("| --- | ---: | ---: | ---: |")
+    for m, r in t["models"].items():
+        print(f"| `{m}` | {r['params']:,} | {r['lora_tensors']} | {r['vision_tensors']} |".replace(",", "."))
+    print(f"| **Tổng** | **{t['total']:,}** | | |".replace(",", "."))
+    print(f"Giới hạn {t['limit']:,}: {'ĐẠT' if t['under_limit'] else 'VƯỢT'} (còn {t['limit'] - t['total']:,})".replace(",", "."))
 
 
 def pct(xs: list[float], q: float) -> float:
@@ -91,10 +129,18 @@ def diff_ids(a: Path, b: Path) -> list[str]:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("outs", nargs="+", type=Path)
+    ap.add_argument("outs", nargs="*", type=Path)
     ap.add_argument("--models", nargs="*", default=[])
     ap.add_argument("--ref", type=Path, help="file nộp để so số mẫu khác (vd. lượt 98 ngoài Docker)")
+    ap.add_argument("--params-only", action="store_true", help="chỉ in bảng đếm tham số của --models (không cần lượt chạy)")
     a = ap.parse_args(argv)
+    if a.params_only:
+        t = param_table(a.models)
+        print_param_table(t)
+        print(json.dumps(t, ensure_ascii=False))
+        sys.exit(0 if t["under_limit"] else 1)
+    if not a.outs:
+        ap.error("cần ít nhất một thư mục ra của docker/predict.sh (hoặc --params-only)")
     bad = [o for o in a.outs if not list(o.glob("runs/*_submit/samples.jsonl"))]
     if bad:
         sys.exit(f"không có lượt agent hoàn tất trong {', '.join(map(str, bad))}: xem predict.log, vllm.log")

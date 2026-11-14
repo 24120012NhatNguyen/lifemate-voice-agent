@@ -1,0 +1,15 @@
+Additional optional Qwen3.5 CPU/DDP run interrupted after sandbox socket restriction was identified.
+[W1113 15:00:44.555822454 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:0 - retrying (try=9, timeout=60000ms, delay=16592ms): The client socket has failed to connect to any network address of (localhost, 0). The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7ed76173e76d in /path/to/workspace/fable-eval/pro-threshold/.venv-vllm/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+[W1113 15:01:01.151305407 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:0 (errno: 1 - Operation not permitted).
+[W1113 15:01:01.151368006 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+[W1113 15:01:01.151434492 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:0 - retrying (try=10, timeout=60000ms, delay=26250ms): The client socket has failed to connect to any network address of (localhost, 0). The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7ed76173e76d in /path/to/workspace/fable-eval/pro-threshold/.venv-vllm/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+[W1113 15:01:27.404684008 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:0 (errno: 1 - Operation not permitted).
+[W1113 15:01:27.404729928 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+[E1113 15:01:27.404791978 TCPStore.cpp:328] [c10d] TCP client failed to connect/validate to host localhost:0 - timed out (try=11, timeout=60000ms): The client socket has failed to connect to any network address of (localhost, 0). The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7ed76173e76d in /path/to/workspace/fable-eval/pro-threshold/.venv-vllm/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+    store = TCPStore(
+torch.distributed.DistNetworkError: The client socket has failed to connect to any network address of (localhost, 0). The client socket cannot be initialized to connect to localhost:0 (errno: 1 - Operation not permitted).
+    raise RendezvousConnectionError(
+torch.distributed.elastic.rendezvous.api.RendezvousConnectionError: The connection to the C10d store has failed. See inner exception for details.

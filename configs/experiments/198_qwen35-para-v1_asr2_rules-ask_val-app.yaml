@@ -1,0 +1,6 @@
+# LM-47 (12/11): như 197 cộng ask_resolve: LLM hỏi lại đúng một tham số ID của tool ghi, trong khi danh sách nguồn của
+# tham số đó đã đọc ở lượt này và lời nói gọi tới đúng một mục, thì không ghi câu hỏi mà trả ID đó cho LLM gọi tiếp.
+# resolve.pick trên gold train_rest: chọn 110 lần, đúng 107 (97,3%), 0 lần chọn ở 78 mẫu gold hỏi lại ID.
+# Vết 195: luật kích hoạt ở 5 mẫu (4 val_app, 1 val_random), cả 5 đúng ID gold; lợi chỉ đo được bằng lượt chạy thật.
+extends: 197_qwen35-para-v1_asr2_rules-value_val-app.yaml
+guards: {ask_resolve: true}

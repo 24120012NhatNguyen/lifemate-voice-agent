@@ -23,10 +23,14 @@ def main(argv=None):
     ap.add_argument("--split", default="public_test")
     ap.add_argument("--model", default="models/phowhisper-large-ft")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--subset", default="all", help="tập con của train (val_app, val_random) khi kiểm ngoài public")
+    ap.add_argument("--num-beams", type=int, default=1, help="như asr.num_beams của config đang kiểm")
+    ap.add_argument("--n-best", type=int, default=1, help="như asr.n_best của config đang kiểm (N-best 4: beam 4, 4 bản)")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
-    engine = build("asr", {"name": "hf_whisper", "model": a.model, "num_beams": 1, "batch_size": 16})
-    pool = splits.select(a.split, "all", a.limit)
+    engine = build("asr", {"name": "hf_whisper", "model": a.model, "num_beams": a.num_beams, "n_best": a.n_best,
+                           "batch_size": 16})
+    pool = splits.select(a.split, a.subset, a.limit)
     sec: dict[str, float] = {}
     for s in [pool[0], *pool]:
         reqs = [Request(f"{s['id']}/{t}", p, s, t) for t, p in data.audio_paths(a.split, s).items()]

@@ -1,0 +1,12 @@
+# Config chạy trong Docker với backbone Qwen3.5-4B chỉ văn bản (LM-50): bản nộp 98q (N-best 4, 5 luật + 3 luật chuẩn
+# hoá, enable_thinking=false) chạy tuần tự, có giới hạn thời gian. docker/predict.sh ghi đè split, asr.model,
+# agent.llm.model và base_url; nó tự nhận model Qwen3.5 (config.json: model_type qwen3_5_text) rồi phục vụ với
+# --chat-template prompts/qwen35_scaffold.jinja, --gdn-prefill-backend triton, --max-num-seqs 1, không DETERMINISTIC.
+#   LLM=models/qwen35-4b-sft-<tên> CONFIG=configs/docker-qwen35.yaml TAG=lifemate:q35 scripts/docker_build.sh
+# workers 1 + --max-num-seqs 1: mỗi lúc vLLM chỉ tính một chuỗi, nên kết quả không phụ thuộc cách ghép batch (vLLM
+# chưa có kernel bất biến theo batch cho lớp Gated DeltaNet). time_budget 25 s tính cả ASR, như configs/docker.yaml.
+extends: experiments/98q_submit_public_qwen35-synth.yaml
+subset: all
+workers: 1
+agent:
+  time_budget: 25

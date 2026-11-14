@@ -39,4 +39,7 @@ def test_merge_keeps_main_cache_key(tmp_path, monkeypatch):
     _write(tmp_path, {"name": "hf_whisper", **SECOND}, [_row("s1", "Mở nhạc.")])
     plain = base.run_asr("train", [{"id": "s1"}], {"asr": dict(MAIN)}, log=lambda *_: None)
     merged = base.run_asr("train", [{"id": "s1"}], {"asr": {**MAIN, "merge_with": SECOND}}, log=lambda *_: None)
-    assert plain == merged  # bản trùng không thêm gì; không đọc cache khác cho bản chính
+    # bản trùng không thêm phương án nào; không đọc cache khác cho bản chính; chỉ `sec` đổi: gồm cả lượt nghe thứ hai
+    strip = lambda rows: {i: {k: v for k, v in r.items() if k != "sec"} for i, r in rows.items()}  # noqa: E731
+    assert strip(plain) == strip(merged)
+    assert abs(merged["s1"]["sec"] - (plain["s1"]["sec"] + 0.1)) < 1e-9

@@ -31,6 +31,8 @@ from .domains import DOMAINS
 KINDS = {"create": 18, "write": 20, "read": 8, "hist_list": 7, "hist_create": 5, "ask_missing": 8, "ask_ambiguous": 6,
          "pick_detail": 6, "cancel": 3, "unsupported": 3, "thanks": 2, "conditional": 5, "correction": 5, "multi": 10,
          "not_found": 2}
+# Bảng của bộ sinh đầu tiên (8acac3c, trước khi có pick_detail): 600 mẫu trong sft/train_synth.jsonl đang dùng sinh từ nó.
+KINDS_V1 = {k: w for k, w in KINDS.items() if k != "pick_detail"}
 LIST_SAY = ["cho {p} xem danh sách {noun}", "kiểm tra giúp {p} {noun} hiện có", "{noun} của {p} có những gì",
             "xem {noun} giúp {p}", "liệt kê {noun} cho {p}"]
 SEARCH_SAY = ["tìm {obj}", "tìm giúp {p} {obj}", "xem có {obj} không"]
@@ -87,8 +89,10 @@ def _harvest(obj, into: set):
 class Builder:
     """Dựng một mẫu: chọn kịch bản, nói ra, rồi chạy gold trên môi trường để có kết quả và hash thật."""
 
-    def __init__(self, host: dict, insts: list[dict], states: dict, installed: dict, rng: random.Random):
+    def __init__(self, host: dict, insts: list[dict], states: dict, installed: dict, rng: random.Random, order=sorted):
+        """order: hàm xếp một tập tên trường thành danh sách (xem `generate`): mọi chỗ duyệt một tập đi qua nó."""
         self.host, self.insts, self.states, self.installed, self.rng = host, insts, states, installed, rng
+        self.order = order
         self.now = apps.now_of(host)
         self.p = vi.pronoun(host["context"]["user_profile"].get("name"), rng)
         self.env = None
@@ -239,7 +243,7 @@ class Builder:
             return Val(item["id"], phrase, item, said)
         return None
 
-    def choose(self, templates: list, must: set, may: set, need_obj: bool) -> tuple[str, set]:
+    def choose(self, templates: list, must: set, may: set, need_obj: bool) -> tuple[str, list]:
         cands = []
         for t in templates:
             alls, hard = slots(t)
@@ -250,8 +254,10 @@ class Builder:
             raise Skip("không có mẫu câu")
         t = self.rng.choice(cands)
         alls, hard = slots(t)
-        said = set(must) | (hard & may) | {s for s in (alls & may) - hard if self.rng.random() < 0.5}
-        return t, said
+        # Hai chỗ thứ tự duyệt tập quyết định kết quả: trường tuỳ chọn nào nhận lượt tung xu nào, và các trường được
+        # nói ra lấy giá trị theo thứ tự nào (cũng là thứ tự khoá trong call gold). Cả hai đi qua self.order.
+        said = set(must) | (hard & may) | {s for s in self.order((alls & may) - hard) if self.rng.random() < 0.5}
+        return t, self.order(said)
 
     # -- ý định ------------------------------------------------------------------------------------------
     def create(self, inst: dict, short: str, omit: bool = False, fix: bool = False, ambiguous: bool = False,
@@ -573,7 +579,7 @@ class Builder:
         have = {i["domain"] for i in self.insts}
         dom = rng.choice([d for d in DOMAINS if d.ids[0] in UNSUPPORTED and d.ids[0] not in have])
         inst = apps.instance(dom, rng, set())
-        other = Builder(self.host, [inst], {inst["app"]: apps.initial_state(inst, self.now, rng)}, {}, rng)
+        other = Builder(self.host, [inst], {inst["app"]: apps.initial_state(inst, self.now, rng)}, {}, rng, self.order)
         other.p = self.p
         short = other.pick(inst, ("update", "delete", "set"))
         return vi.utter(other.write(inst, short).core, self.p, rng)
@@ -616,13 +622,9 @@ def _installed(host: dict, insts: list[dict], rng: random.Random) -> dict:
 
 
 def real_app_ids() -> set[str]:
-    """Tên app của train và public: app tổng hợp không được trùng."""
-    out = {a["id"] for a in data.catalog("train")["apps"]}
-    try:
-        out |= {a["id"] for a in data.catalog("public_test")["apps"]}
-    except FileNotFoundError:
-        pass
-    return out
+    """Tên app của train: app tổng hợp không được trùng. Chỉ đọc tập train: tập public không được dùng để sinh dữ
+    liệu dưới bất kỳ hình thức nào (FAQ của BTC 09/11), kể cả để tránh trùng tên."""
+    return {a["id"] for a in data.catalog(apps.SPLIT)["apps"]}
 
 
 def specs(sample: dict) -> dict:
@@ -661,38 +663,74 @@ def _domains(kind: str, rng: random.Random) -> list:
     return [first] + rng.sample([d for d in DOMAINS if d is not first], k_extra)
 
 
-def generate(hosts: list[dict], n: int, seed: int = 0, kinds: dict | None = None) -> list[dict]:
-    """n mẫu tổng hợp, mỗi mẫu mượn ngữ cảnh của một mẫu trong `hosts`. Tất định theo seed và thứ tự `hosts`."""
+class Replay:
+    """Hàm xếp thứ tự phát lại một lượt sinh cũ: lần lượt trả các thứ tự đã ghi (mỗi cái là một danh sách tên trường).
+
+    Trước LM-48 bộ sinh duyệt thẳng `set` các tên trường, nên thứ tự phụ thuộc hàm băm chuỗi của từng tiến trình Python
+    (PYTHONHASHSEED): cùng seed mà mỗi lần chạy ra một bộ mẫu khác. Thứ tự của lượt sinh ra file đang dùng được tìm lại
+    bằng scripts/synth_orders.py; phát lại nó thì bộ sinh ra đúng file đó từng byte. Tập dưới hai phần tử không ghi."""
+
+    def __init__(self, orders: list[list[str]]):
+        self.orders, self.used = orders, 0
+
+    def __call__(self, xs) -> list:
+        if len(xs) < 2:
+            return list(xs)
+        if self.used >= len(self.orders):
+            raise ValueError(f"hết thứ tự đã ghi sau {self.used} lần; còn phải xếp {sorted(xs)}")
+        out = self.orders[self.used]
+        self.used += 1
+        if sorted(out) != sorted(xs):
+            raise ValueError(f"thứ tự đã ghi thứ {self.used} là {out}, không phải của tập {sorted(xs)}")
+        return list(out)
+
+
+def attempt(rng: random.Random, hosts: list[dict], kinds: dict, avoid: set, order, index: int) -> dict | None:
+    """Một lần thử dựng mẫu thứ `index` (từ 1). None: kịch bản không dựng được với app và state đã chọn (Skip)."""
+    kind = rng.choices(list(kinds), list(kinds.values()))[0]
+    host = rng.choice(hosts)
+    taken = avoid | set(host["context"]["installed_apps"])
+    insts = []
+    for d in _domains(kind, rng):
+        inst = apps.instance(d, rng, taken)
+        taken.add(inst["app"])
+        insts.append(inst)
+    now = apps.now_of(host)
+    states = {i["app"]: apps.initial_state(i, now, rng) for i in insts}
+    b = Builder(host, insts, states, _installed(host, insts, rng), rng, order)
+    try:
+        text = b.scenario(kind)
+        calls, results = b.end_turn()
+    except Skip:
+        return None
+    start = b.after if b.history else b.states  # state lúc người dùng nói câu cuối (lịch sử đã áp dụng)
+    env = b.env or apps.SynthEnv(host["id"], insts, start, b.tools_installed())
+    return {
+        "id": f"synth_{index:05d}", "audio_text": text,
+        "context": {**{k: v for k, v in host["context"].items() if k != "installed_apps"}, "installed_apps": b.installed},
+        "history": b.history, "label": {"tool_calls": calls, "tool_results": results},
+        "synth": {"host": host["id"], "kind": kind, "apps": insts, "state": copy.deepcopy(start),
+                  "state_hash": env.get_state_hash()}}
+
+
+def generate(hosts: list[dict], n: int, seed: int = 0, kinds: dict | None = None,
+             orders: list[list[str]] | None = None) -> list[dict]:
+    """n mẫu tổng hợp, mỗi mẫu mượn ngữ cảnh của một mẫu trong `hosts`. Tất định theo seed và thứ tự `hosts`: mọi tập
+    tên trường được duyệt theo thứ tự bảng chữ cái, không theo thứ tự băm của tiến trình.
+
+    orders: phát lại thứ tự duyệt đã ghi của một lượt sinh cũ (lớp Replay), cùng `kinds` của lượt đó."""
     rng = random.Random(seed)
     kinds = kinds or KINDS
     avoid = real_app_ids()
+    order = sorted if orders is None else Replay(orders)
     out, tries = [], 0
     while len(out) < n:
         tries += 1
         if tries > n * 20:
             raise RuntimeError("quá nhiều lần dựng hỏng")
-        kind = rng.choices(list(kinds), list(kinds.values()))[0]
-        host = rng.choice(hosts)
-        taken = avoid | set(host["context"]["installed_apps"])
-        insts = []
-        for d in _domains(kind, rng):
-            inst = apps.instance(d, rng, taken)
-            taken.add(inst["app"])
-            insts.append(inst)
-        now = apps.now_of(host)
-        states = {i["app"]: apps.initial_state(i, now, rng) for i in insts}
-        b = Builder(host, insts, states, _installed(host, insts, rng), rng)
-        try:
-            text = b.scenario(kind)
-            calls, results = b.end_turn()
-        except Skip:
-            continue
-        start = b.after if b.history else b.states  # state lúc người dùng nói câu cuối (lịch sử đã áp dụng)
-        env = b.env or apps.SynthEnv(host["id"], insts, start, b.tools_installed())
-        out.append({
-            "id": f"synth_{len(out) + 1:05d}", "audio_text": text,
-            "context": {**{k: v for k, v in host["context"].items() if k != "installed_apps"}, "installed_apps": b.installed},
-            "history": b.history, "label": {"tool_calls": calls, "tool_results": results},
-            "synth": {"host": host["id"], "kind": kind, "apps": insts, "state": copy.deepcopy(start),
-                      "state_hash": env.get_state_hash()}})
+        sample = attempt(rng, hosts, kinds, avoid, order, len(out) + 1)
+        if sample is not None:
+            out.append(sample)
+    if isinstance(order, Replay) and order.used != len(order.orders):
+        raise ValueError("còn thứ tự chưa dùng: metadata không khớp lượt sinh")
     return out

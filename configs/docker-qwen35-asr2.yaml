@@ -1,0 +1,19 @@
+# Config chạy trong Docker cho công thức 98r3 / 195 (LM-50, brief mục 0000): Qwen3.5-4B chỉ văn bản + HAI ASR trên MỘT
+# PhoWhisper gốc. ASR chính: gốc + adapter phowhisper-large-ft, beam 4, N-best 4. ASR thứ hai: gốc + adapter
+# phowhisper-large-ft2-all, greedy, bản chép lượt cuối thành phương án đầu (asr.merge_with). Hai adapter tách lại từ hai
+# bản đã gộp bằng scripts/whisper_lora_extract.py; image mang một bản gốc (1.543.304.960 tham số) + hai adapter
+# (57.671.680 mỗi cái) thay cho hai bản gộp, để tổng với Qwen3.5 còn dưới 6 tỷ.
+#   ASR=models/phowhisper-large-base ADAPTERS="models/phowhisper-large-ft-lora models/phowhisper-large-ft2-all-lora" \
+#     LLM=models/qwen35-4b-sft-full-para-v1 CONFIG=configs/docker-qwen35-asr2.yaml TAG=lifemate:98r3 scripts/docker_build.sh
+# docker/predict.sh ghi đè asr.model bằng ASR_MODEL của image (bản gốc); merge_with.model lấy ở đây.
+# Chạy tuần tự, time_budget 25 s tính cả ASR, như configs/docker-qwen35.yaml.
+extends: experiments/98r3_submit_public_qwen35-full-para-v1_asr2.yaml
+subset: all
+workers: 1
+asr:
+  model: models/phowhisper-large-base
+  adapter: models/phowhisper-large-ft-lora
+  # history: false: ASR thứ hai chỉ góp bản chép lượt cuối, nên trong Docker không chép lại các lượt lịch sử
+  merge_with: {model: models/phowhisper-large-base, adapter: models/phowhisper-large-ft2-all-lora, num_beams: 1, batch_size: 16, history: false}
+agent:
+  time_budget: 25

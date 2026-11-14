@@ -1,6 +1,10 @@
 """App tổng hợp: gold phải chạy lại ra đúng kết quả và state của chính nó, và hội thoại SFT phải đúng từng chữ ReactJSON."""
+import hashlib
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from collections import Counter
 from types import SimpleNamespace
 
@@ -134,3 +138,93 @@ def test_tool_and_param_names_vary_between_instances():
 
 def test_generation_is_deterministic():
     assert synth.generate(HOSTS, 30, seed=7) == synth.generate(HOSTS, 30, seed=7)
+
+
+def digest(samples) -> str:
+    return hashlib.sha256(json.dumps(samples, ensure_ascii=False).encode()).hexdigest()
+
+
+def test_samples_do_not_depend_on_the_hash_seed_of_the_process():
+    """Trước LM-48 bộ sinh duyệt thẳng `set` các tên trường, nên cùng seed mà mỗi tiến trình Python (PYTHONHASHSEED) ra
+    một bộ mẫu khác, kể cả thứ tự khoá trong call gold. Giờ mọi tập đi qua một hàm xếp thứ tự."""
+    code = ("import hashlib, json; from lifemate import splits, synth; "
+            "ss = synth.generate(splits.select('train', 'train_rest'), 60, seed=0); "
+            "print(hashlib.sha256(json.dumps(ss, ensure_ascii=False).encode()).hexdigest())")
+    run = lambda seed: subprocess.run([sys.executable, "-c", code], env={**os.environ, "PYTHONHASHSEED": seed},
+                                      capture_output=True, text=True, check=True).stdout.strip()
+    assert run("1") == run("2") == digest(SAMPLES[:60])
+
+
+def test_the_two_set_walks_are_the_only_place_the_order_function_matters():
+    by_abc = synth.generate(HOSTS, 40, seed=3)
+    assert digest(by_abc) == digest(synth.generate(HOSTS, 40, seed=3, orders=None))
+    backwards = []  # ghi lại một thứ tự khác (bảng chữ cái ngược), rồi phát lại: phải ra đúng bộ mẫu của thứ tự đó
+    order = lambda xs: backwards.append(sorted(xs, reverse=True)) or backwards[-1]
+    rng, avoid, out = synth.scenarios.random.Random(3), synth.scenarios.real_app_ids(), []
+    while len(out) < 40:
+        sample = synth.scenarios.attempt(rng, HOSTS, synth.scenarios.KINDS, avoid, order, len(out) + 1)
+        if sample is not None:
+            out.append(sample)
+    recorded = [o for o in backwards if len(o) > 1]
+    assert digest(out) != digest(by_abc) and recorded
+    assert digest(synth.generate(HOSTS, 40, seed=3, orders=recorded)) == digest(out)
+
+
+def test_replay_refuses_orders_recorded_for_another_run():
+    replay = synth.scenarios.Replay([["b", "a"]])
+    assert replay(set()) == [] and replay({"z"}) == ["z"] and replay({"a", "b"}) == ["b", "a"]
+    with pytest.raises(ValueError):
+        replay({"a", "b"})  # hết thứ tự đã ghi
+    with pytest.raises(ValueError):
+        synth.generate(HOSTS, 30, seed=0, orders=[["không", "phải"]] * 200)  # thứ tự của một tập khác
+
+
+@pytest.mark.parametrize("name, subset, kinds", [("synth_v1_orders.json", "train_rest", "v1"),
+                                                 ("synth_full_v2_orders.json", "all", "v2")])
+def test_the_training_files_are_reproduced_from_their_recorded_set_orders(name, subset, kinds):
+    """600 mẫu tổng hợp của hai file đã dùng để train sinh lại được từng byte từ mã, seed 2026, tập train và thứ tự duyệt
+    dò lại bằng scripts/synth_orders.py: sft/train_synth.jsonl (sha256 cả file b251018b…, bảng kịch bản v1 trước khi có
+    pick_detail, mẫu chủ train_rest) và phần tổng hợp của sft/train_full_para_v1.jsonl (d8363b21…, bảng v2, mẫu chủ all)."""
+    rep = json.loads((REPO / "docs/repro" / name).read_text(encoding="utf-8"))
+    assert (rep["n"], rep["seed"], rep["kinds"], rep["subset"]) == (600, 2026, kinds, subset)
+    table = {"v1": synth.scenarios.KINDS_V1, "v2": synth.scenarios.KINDS}[kinds]
+    samples = synth.generate(splits.select("train", subset), rep["n"], seed=rep["seed"], kinds=table, orders=rep["orders"])
+    agent = build("agent", config.load(REPO / rep["config"])["agent"])
+    lines = [json.dumps({"id": s["id"], "synth": s["synth"]["kind"],
+                         "messages": build_sft.conversation(agent, s, synth.transcript(s), None, specs=synth.specs(s))},
+                        ensure_ascii=False) for s in samples]
+    assert hashlib.sha256("".join(x + chr(10) for x in lines).encode()).hexdigest() == rep["synth_lines_sha256"]
+    assert any(s["synth"]["kind"] == "pick_detail" for s in samples) == (kinds == "v2")
+    assert "pick_detail" not in synth.scenarios.KINDS_V1
+
+
+def test_generation_reads_nothing_but_the_train_split(monkeypatch):
+    """Tập public không được dùng để sinh dữ liệu dưới bất kỳ hình thức nào (FAQ của BTC), kể cả để tránh trùng tên app."""
+    for name in ("catalog", "tool_specs", "samples", "by_id", "fuzzy_params", "zaic_tools", "tool_env", "tool_kind"):
+        real = getattr(data, name)
+
+        def guarded(split, *args, _real=real, _name=name, **kw):
+            assert split == "train", f"bộ sinh gọi data.{_name}({split!r})"
+            return _real(split, *args, **kw)
+
+        monkeypatch.setattr(data, name, guarded)
+    samples = synth.generate(HOSTS, 40, seed=5)
+    assert len(samples) == 40 and all(not synth.replay(s, CFG["guards"]) for s in samples)
+    assert synth.scenarios.real_app_ids() == {a["id"] for a in data.catalog("train")["apps"]}
+
+
+def test_build_sft_reads_nothing_but_the_train_split(monkeypatch, tmp_path):
+    """Cả đường dựng file SFT (mẫu thật + mẫu tổng hợp): không hàm đọc dữ liệu nào được gọi với split khác train."""
+    for name in ("catalog", "tool_specs", "samples", "by_id", "fuzzy_params", "zaic_tools", "tool_env", "tool_kind"):
+        real = getattr(data, name)
+
+        def guarded(split, *args, _real=real, _name=name, **kw):
+            assert split == "train", f"build_sft gọi data.{_name}({split!r})"
+            return _real(split, *args, **kw)
+
+        monkeypatch.setattr(data, name, guarded)
+    out = tmp_path / "train.jsonl"
+    build_sft.main(["--limit", "25", "--synth", "10", "--out", str(out)])
+    rows = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
+    assert sum(r["id"].startswith("synth_") for r in rows) == 10 and 20 <= len(rows) <= 35
+    assert not any("public" in r["id"] for r in rows)

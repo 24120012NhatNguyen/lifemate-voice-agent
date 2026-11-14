@@ -1,4 +1,4 @@
-"""Tab Dữ liệu: nhãn của BTC nằm ở đâu, nghe từng mẫu cùng bản chép lời và call gold, catalog app train và public."""
+"""Tab Dữ liệu: nhãn của BTC nằm ở đâu, nghe từng mẫu cùng bản chép lời và call gold, catalog app train."""
 from __future__ import annotations
 
 import json
@@ -14,28 +14,21 @@ from lifemate.splits import HELDOUT_APPS
 @st.cache_data(show_spinner=False)
 def overview() -> dict:
     root = data.data_root()
-    tr, pt = data.samples("train"), data.samples("public_test")
-    return {"root": str(root), "train": len(tr), "public": len(pt),
+    tr = data.samples("train")
+    return {"root": str(root), "train": len(tr),
             "turns": sum(1 for s in tr for t in s.get("history", []) if t.get("role") == "user"),
-            "wav_train": sum(1 for _ in (root / "train" / "audio").rglob("*.wav")),
-            "wav_public": sum(1 for _ in (root / "public_test" / "audio").rglob("*.wav"))}
+            "wav_train": sum(1 for _ in (root / "train" / "audio").rglob("*.wav"))}
 
 
 @st.cache_data(show_spinner=False)
 def app_table() -> pd.DataFrame:
-    tr_specs, pt_specs = data.tool_specs("train"), data.tool_specs("public_test")
-    tools = Counter(n.split(".")[0] for n in {**tr_specs, **pt_specs})
+    tools = Counter(n.split(".")[0] for n in data.tool_specs("train"))
     used = Counter(a for s in data.samples("train") for a in {c["name"].split(".")[0] for c in s["label"]["tool_calls"]})
-    inst_tr = Counter(a for s in data.samples("train") for a in s["context"]["installed_apps"])
-    inst_pt = Counter(a for s in data.samples("public_test") for a in s["context"]["installed_apps"])
-    tr_apps, pt_apps = {n.split(".")[0] for n in tr_specs}, {n.split(".")[0] for n in pt_specs}
-    rows = []
-    for app in sorted(tools):
-        where = ("chỉ public (mới)" if app not in tr_apps else "giữ lại (val_app)" if app in HELDOUT_APPS
-                 else "train và public" if app in pt_apps else "chỉ train")
-        rows.append({"app": app, "loại": where, "số tool": tools[app], "mẫu train gọi": used.get(app, 0),
-                     "mẫu train cài": inst_tr.get(app, 0), "mẫu public cài": inst_pt.get(app, 0)})
-    return pd.DataFrame(rows)
+    installed = Counter(a for s in data.samples("train") for a in s["context"]["installed_apps"])
+    return pd.DataFrame([{
+        "app": app, "loại": "giữ lại (val_app)" if app in HELDOUT_APPS else "train",
+        "số tool": tools[app], "mẫu train gọi": used[app], "mẫu train cài": installed[app],
+    } for app in sorted(tools)])
 
 
 def _calls(calls: list[dict], results: list | None = None) -> str:
@@ -53,11 +46,10 @@ def render() -> None:
     except FileNotFoundError:
         st.info("Không tìm thấy gói dữ liệu BTC (đặt ở zalo-ai-2026/data/lifemate/ hoặc trỏ LIFEMATE_DATA).")
         return
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     c1.metric("Mẫu train có nhãn", f"{ov['train']:,}".replace(",", "."))
     c2.metric("Lượt user trong lịch sử có chép lời", f"{ov['turns']:,}".replace(",", "."))
     c3.metric("File wav train", f"{ov['wav_train']:,}".replace(",", "."))
-    c4.metric("Mẫu public (không nhãn)", f"{ov['public']:,}".replace(",", "."), help=f"{ov['wav_public']} file wav")
 
     st.subheader("Nhãn nằm ở đâu")
     st.markdown(
@@ -69,7 +61,8 @@ def render() -> None:
 
     st.subheader("Xem từng mẫu")
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-    split = c1.selectbox("Split", ["train", "public_test"], key="ds_split")
+    split = "train"
+    c1.caption("Split: train")
     pool = data.samples(split)
     if split == "train":
         grp = c2.selectbox("Tập", ["tất cả", "val_random", "val_app", "train_rest"], key="ds_group")
@@ -120,7 +113,7 @@ def render() -> None:
                                     "giữ lại": "✓" if a in HELDOUT_APPS else ""}
                                    for a, v in ctx["installed_apps"].items()]), hide_index=True, width="stretch")
 
-    st.subheader("Catalog app: train và public")
+    st.subheader("Catalog app: train")
     tbl = app_table()
     kinds = tbl["loại"].value_counts()
     st.caption(" · ".join(f"{k}: {v} app" for k, v in kinds.items()) +

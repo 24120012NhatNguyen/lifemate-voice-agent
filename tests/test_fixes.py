@@ -79,6 +79,41 @@ def test_clock_fix_leaves_values_with_a_source(said, seen):
     assert fix("reminders.create", args, said, seen) == args
 
 
+def face(args, said, seen=(), name="reminders.create"):
+    return F.fix_args(name, args, SPECS[name], said, NOW, set(seen), {"clock_fix": True, "clock_face": True})[0]
+
+
+def test_clock_face_takes_the_next_time_today_when_no_period_is_said():
+    # 09:00, "mười giờ mười lăm": 10:15 hôm nay, không phải 22:15 (clock_fix không sửa vì cả hai đều có trong lời)
+    assert face({"content": "x", "time": "2026-09-25T22:15:00+07:00"},
+                "bật máy giặt rồi mười giờ mười lăm nhắc tôi ra lấy đồ nhé")["time"] == "2026-09-25T10:15:00+07:00"
+    # giờ sáng đã qua thì lấy buổi chiều
+    assert face({"content": "x", "time": "2026-09-25T08:30:00+07:00"},
+                "tám rưỡi nhắc anh gọi cho mẹ")["time"] == "2026-09-25T20:30:00+07:00"
+    # ngày khác hôm nay: không chọn buổi thay LLM
+    args = {"content": "x", "time": "2026-09-26T19:00:00+07:00"}
+    assert face(args, "mai bảy giờ nhắc anh đi đá bóng") == args
+
+
+def test_clock_face_fixes_the_minute_of_the_spoken_time():
+    assert face({"content": "x", "time": "2026-09-25T09:30:00+07:00"},
+                "chín giờ năm mươi nhắc anh ra lấy đồ đem phơi nhé")["time"] == "2026-09-25T09:50:00+07:00"
+    out = face({"title": "x", "start": "2026-09-29T15:20:00+07:00", "end": "2026-09-29T16:20:00+07:00"},
+               "tạo lịch ba giờ chiều thứ ba tuần sau", name="calendar.create_event")
+    assert (out["start"], out["end"]) == ("2026-09-29T15:00:00+07:00", "2026-09-29T16:00:00+07:00")
+
+
+@pytest.mark.parametrize("said, seen", [
+    ("mười giờ mười lăm trước giờ họp nửa tiếng thì nhắc anh", []),  # dời theo thời lượng: không phải giờ nói ra
+    ("nhắc anh mười giờ mười lăm đúng giờ đó", []),                 # giờ theo mốc
+    ("mười giờ mười lăm nhắc anh", ["2026-09-25T22:15:00+07:00"]),  # giờ có trong kết quả tool
+    ("mười giờ với hai giờ chiều nhắc anh", []),                     # hai giờ khác nhau trên mặt đồng hồ
+])
+def test_clock_face_leaves_other_cases(said, seen):
+    args = {"content": "x", "time": "2026-09-25T22:15:00+07:00"}
+    assert face(args, said, seen) == args
+
+
 def test_money_k_and_span_min():
     assert fix("ewallet.transfer", {"contact_id": "c_01", "amount": 350}, "chuyển cô Ly ba trăm rưỡi")["amount"] == 350000
     assert fix("exchange_rate.convert", {"from_currency": "USD", "to_currency": "VND", "amount": 500},
@@ -98,7 +133,8 @@ def test_missing_asks_for_an_amount_or_a_time_nobody_said():
     assert missing("reminders.create", {"content": "x", "time": "2026-09-25T09:55:00+07:00"}, "giặt xong thì nhắc mình") == []
     # "Tí" là tên trong một lượt trước, không phải "tí tiền"
     assert F.missing("stocks.set_price_alert", {"symbol": "ZTP", "price": 23000, "direction": "below"},
-                     data.tool_specs("public_test")["stocks.set_price_alert"], "nhắn thằng Tí. đặt cảnh báo giùm", NOW, set(),
+                     {"parameters": {"properties": {"symbol": {"type": "string"},
+                                                    "price": {"type": "number"}, "direction": {"type": "string"}}}}, "nhắn thằng Tí. đặt cảnh báo giùm", NOW, set(),
                      final="đặt cảnh báo giùm") == []
 
 
@@ -149,7 +185,7 @@ def test_guarded_env_without_rules_runs_the_call_as_proposed():
 def test_no_rule_changes_a_gold_call_of_train():
     """Chạy call gold của cả 1.545 mẫu qua GuardedEnv với mọi luật bật: call, tham số và state phải y nguyên."""
     from lifemate.runner import gold_hash
-    rules = dict(ALL, ask_missing=True, pick_one=True)
+    rules = dict(ALL, ask_missing=True, pick_one=True, clock_face=True)
     changed = []
     for s in data.samples("train"):
         env = data.tool_env("train", s["id"])

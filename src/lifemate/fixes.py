@@ -317,6 +317,64 @@ def fix_args(name: str, args: dict, spec: dict, said: str, now: str, seen: set, 
     if rules.get("now_offset_fix"):
         out, more = _now_offset_fix(out, said, now, seen, props=props)
         notes += more
+    if rules.get("clock_face"):
+        out, more = _clock_face(out, props, said, now, seen)
+        notes += more
+    return out, notes
+
+
+def _clock_face(args: dict, props: dict, said: str, now: str, seen: set) -> tuple[dict, list[str]]:
+    """Lời nói đúng MỘT giờ trên mặt đồng hồ ("mười giờ mười lăm", "chín giờ năm mươi"), không kèm dời giờ hay giờ theo
+    mốc, mà tham số ngày giờ cùng giờ trên mặt đồng hồ đó lại lệch:
+
+    - lệch phút (LLM viết 09:30 khi lời nói "chín giờ năm mươi"): lấy phút nói ra, giữ giờ LLM chọn;
+    - lời không nói buổi (hai cách hiểu 10:15 và 22:15) và ngày của tham số là hôm nay: lấy lúc gần nhất còn ở phía
+      trước giờ hiện tại.
+
+    clock_fix không đụng hai ca này: nó chỉ sửa khi lời có đúng một cách hiểu, hoặc khi giờ LLM viết không có trong lời.
+    Giá trị có nguồn (lịch sử, kết quả tool) hay tính được một bước (numbers.derive) không sửa."""
+    norm = _norm(said)
+    if _OFFSET.search(norm) or _REL_TIME.search(norm):
+        return args, []
+    cs = spoken_clocks(said)
+    faces = {(int(c[:2]) % 12, c[3:]) for c in cs}
+    if len(faces) != 1:
+        return args, []
+    (face_h, face_m), = faces
+    from .context import timetable_dates
+    dates = timetable_dates(now)
+    n = datetime.fromisoformat(now)
+    seen_times = {x[11:16] if _ISO.match(x) else x for x in seen
+                  if isinstance(x, str) and (_ISO.match(x) or re.fullmatch(r"\d{2}:\d{2}", x))}
+    out, notes = dict(args), []
+    for k, v in args.items():
+        if not _temporal_prop(props.get(k, {})) or _end_like(k):
+            continue
+        m = _ISO.match(v) if isinstance(v, str) else None
+        if not m or not m.group(2) or v in seen or m.group(2) in seen_times:
+            continue
+        if N.derive(v, said, [list(seen)], now, dates) is not None:
+            continue
+        h = int(m.group(2)[:2])
+        if h % 12 != face_h:
+            continue  # giờ khác hẳn: việc của clock_fix
+        new_h = h
+        if len(cs) == 2 and m.group(1) == n.date().isoformat():
+            ahead = [int(c[:2]) for c in sorted(cs) if n.replace(hour=int(c[:2]), minute=int(c[3:]), second=0) > n]
+            if ahead:
+                new_h = ahead[0]
+        t = f"{new_h:02d}:{face_m}"
+        if t != m.group(2):
+            out[k] = _shift(v, None, t)
+            notes.append(f"clock_face {k}: {v} → {out[k]}")
+    if notes:  # dời giờ bắt đầu thì dời giờ kết thúc theo, giữ thời lượng LLM đã chọn
+        k0 = next(k for k in out if out[k] != args.get(k))
+        delta = datetime.fromisoformat(out[k0]) - datetime.fromisoformat(args[k0])
+        for k, v in args.items():
+            if _temporal_prop(props.get(k, {})) and _end_like(k) and isinstance(v, str) and _ISO.match(v) and "T" in v \
+                    and v not in seen:
+                out[k] = (datetime.fromisoformat(v) + delta).isoformat()
+                notes.append(f"clock_face {k}: {v} → {out[k]}")
     return out, notes
 
 

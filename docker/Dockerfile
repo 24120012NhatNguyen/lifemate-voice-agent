@@ -35,6 +35,18 @@ COPY --from=asr / models/${ASR_DIR}/
 COPY --from=llm / models/${LLM_DIR}/
 ENV ASR_MODEL=models/${ASR_DIR} LLM_MODEL=models/${LLM_DIR}
 
+# VARIANT=full2: như full, thêm hai adapter LoRA của ASR (build context `adapter1`, `adapter2`) cạnh bản gốc; dùng với
+# configs/docker-qwen35-asr2.yaml (một PhoWhisper gốc + hai adapter thay cho hai bản đã gộp).
+FROM weights-full AS weights-full2
+ARG ADAPTER1_DIR=phowhisper-large-ft-lora
+ARG ADAPTER2_DIR=phowhisper-large-ft2-all-lora
+COPY --from=adapter1 / models/${ADAPTER1_DIR}/
+COPY --from=adapter2 / models/${ADAPTER2_DIR}/
+# Thứ hạng app của train cho mồi ASR (scripts/export_app_rank.py): image không mang dữ liệu train. Build context
+# `apprank` là thư mục chứa đúng một file app_rank_train.json (chỉ ID app, không có mẫu).
+COPY --from=apprank app_rank_train.json models/app_rank_train.json
+ENV LIFEMATE_APP_RANK=/app/models/app_rank_train.json
+
 FROM weights-${VARIANT}
 # Config bản nộp mặc định của image (docker/predict.sh đọc biến CONFIG); đổi lúc dựng bằng --build-arg CONFIG=...
 # (scripts/docker_build.sh: CONFIG=configs/docker-nbest.yaml) hoặc lúc chạy bằng -e CONFIG=...

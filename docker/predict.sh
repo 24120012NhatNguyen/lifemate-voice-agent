@@ -22,6 +22,23 @@ ASR_MODEL=${ASR_MODEL:-models/phowhisper-large-ft}
 PORT=${PORT:-8000}
 VLLM_WAIT=${VLLM_WAIT:-900}
 PY=${PY:-.venv/bin/python}
+SUBSET=${SUBSET:-all}  # tập con của train khi kiểm (val_app, val_random); split thi luôn là all
+
+# Qwen3.5 chỉ văn bản (config.json: model_type qwen3_5_text) phục vụ khác Qwen3: vLLM chưa có kernel bất biến theo
+# batch cho lớp Gated DeltaNet nên không bật DETERMINISTIC; chạy lại ra cùng kết quả nhờ mỗi lúc chỉ một chuỗi
+# (--max-num-seqs 1, agent tuần tự). Chat template là khung think rỗng mà model đã học; prefill GDN bằng Triton.
+# Tự nhận theo model; ép bằng LLM_FLAVOR=qwen3|qwen35. Đổi chế độ bằng MAX_NUM_SEQS, LLM_DETERMINISTIC, VLLM_EXTRA.
+if [ -z "${LLM_FLAVOR:-}" ]; then
+  if grep -qs '"model_type": *"qwen3_5_text"' "$LLM_MODEL/config.json"; then LLM_FLAVOR=qwen35; else LLM_FLAVOR=qwen3; fi
+fi
+if [ "$LLM_FLAVOR" = qwen35 ]; then
+  LLM_DETERMINISTIC=${LLM_DETERMINISTIC:-0}
+  MAX_NUM_SEQS=${MAX_NUM_SEQS:-1}
+  export GPU_UTIL=${GPU_UTIL:-0.80}
+  export VLLM_EXTRA=${VLLM_EXTRA:-"--gdn-prefill-backend triton --max-num-seqs $MAX_NUM_SEQS --max-num-batched-tokens 8192 --chat-template $HERE/prompts/qwen35_scaffold.jinja"}
+else
+  LLM_DETERMINISTIC=${LLM_DETERMINISTIC:-1}
+fi
 
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1
 export PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 CUBLAS_WORKSPACE_CONFIG=:4096:8 TOKENIZERS_PARALLELISM=false
@@ -58,7 +75,7 @@ fi
 export LIFEMATE_DATA=$DATA
 export LIFEMATE_CACHE=${LIFEMATE_CACHE:-$(mktemp -d)}
 log "split $SPLIT ($(wc -l < "$DATA/$SPLIT/$SPLIT.jsonl") mẫu) ở $DATA, config $CONFIG"
-log "LLM $LLM_MODEL, ASR $ASR_MODEL"
+log "LLM $LLM_MODEL ($LLM_FLAVOR, DETERMINISTIC=$LLM_DETERMINISTIC${VLLM_EXTRA:+, vLLM thêm: $VLLM_EXTRA}), ASR $ASR_MODEL"
 
 drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)
 log "GPU $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 || echo '?'), driver ${drv:-?}"
@@ -82,16 +99,17 @@ if command -v nvidia-smi >/dev/null; then  # bộ nhớ GPU cả card, mỗi 0,5
   SMI=$!
 fi
 
-SETS=(--set "split=$SPLIT" --set subset=all --set "asr.model=$ASR_MODEL" --set "agent.llm.model=$LLM_MODEL"
+SETS=(--set "split=$SPLIT" --set "subset=$SUBSET" --set "asr.model=$ASR_MODEL" --set "agent.llm.model=$LLM_MODEL"
       --set "agent.llm.base_url=http://127.0.0.1:$PORT/v1")
 if [ -n "${LIMIT:-}" ]; then SETS+=(--set "limit=$LIMIT"); fi  # chạy thử trên LIMIT mẫu
+for kv in ${EXTRA_SET:-}; do SETS+=(--set "$kv"); done        # ghi đè thêm khi kiểm, vd. EXTRA_SET="workers=8"
 t0=$(now)
 log "1/3 ASR"
 "$PY" -m lifemate.cli run "$CONFIG" "${SETS[@]}" --set name=asr --set agent.name=none --runs-dir "$OUT/runs"
 
 t1=$(now)
 log "2/3 vLLM"
-DETERMINISTIC=1 MODEL=$LLM_MODEL PORT=$PORT setsid scripts/serve_vllm.sh --host 127.0.0.1 > "$OUT/vllm.log" 2>&1 &
+DETERMINISTIC=$LLM_DETERMINISTIC MODEL=$LLM_MODEL PORT=$PORT setsid scripts/serve_vllm.sh --host 127.0.0.1 > "$OUT/vllm.log" 2>&1 &
 VPID=$!
 ready=""
 for _ in $(seq "$VLLM_WAIT"); do
@@ -117,7 +135,10 @@ run=$(ls -d "$OUT"/runs/*_submit | tail -1)
 cp "$run/predictions.jsonl" "$OUT/submission.jsonl"
 printf '{"asr": [%s, %s], "vllm_start": [%s, %s], "agent": [%s, %s]}\n' "$t0" "$t1" "$t1" "$t2" "$t2" "$t3" > "$OUT/timing.json"
 log "submission.jsonl: $(wc -l < "$OUT/submission.jsonl") dòng, sha256 $(sha256sum "$OUT/submission.jsonl" | cut -c1-16)"
-"$PY" scripts/docker_report.py "$OUT" --models "$ASR_MODEL" "$LLM_MODEL" || log "không dựng được report.json"
+# tham số: ASR gốc, LLM, và mọi adapter LoRA của ASR có trong image (models/*-lora) khi dùng một gốc + nhiều adapter
+# shellcheck disable=SC2046
+"$PY" scripts/docker_report.py "$OUT" --models "$ASR_MODEL" "$LLM_MODEL" $(ls -d models/*-lora 2>/dev/null) || log "không dựng được report.json"
 log "kiểm bằng zaic_tools"
-"$PY" -m lifemate.cli validate "$run"
+# submission.jsonl đã ghi xong: bước kiểm chỉ để đọc log, không được làm container thoát mã khác 0
+"$PY" -m lifemate.cli validate "$run" || log "CẢNH BÁO: zaic_tools --validate trả mã khác 0"
 log "xong"

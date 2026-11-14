@@ -1,0 +1,3 @@
+# LM-49 (12/11, theo Pro 12:33): public 98r5 = 98r3 (public 63,97) + các cờ guard của 198 (LM-47, max/rules-195 81d1734): clock_face, phone_fix, rel_day_fix, now_offset_fix, ask_resolve. Trên val 198 so 195: +1,28 ± 0,87 val_app (tốt 7, tệ 4), +0,41 ± 0,77 val_random (tốt 2, tệ 2).
+extends: 98r3_submit_public_qwen35-full-para-v1_asr2.yaml
+guards: {clock_face: true, phone_fix: true, rel_day_fix: true, now_offset_fix: true, ask_resolve: true}

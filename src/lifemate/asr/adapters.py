@@ -35,6 +35,35 @@ def _local(model: str) -> str:
     return str(path) if path.is_dir() else model
 
 
+def merge_lora_into(model, adapter_dir) -> int:
+    """Cộng một adapter LoRA (định dạng PEFT: adapter_config.json + adapter_model.safetensors) vào trọng số của model,
+    W += (B @ A) · alpha / r, như PeftModel.merge_and_unload nhưng không cần peft lúc suy luận. Gọi khi model còn fp32.
+    Trả số module đã cộng."""
+    import json
+    from pathlib import Path
+
+    import torch
+    from safetensors.torch import load_file
+
+    d = Path(adapter_dir)
+    cfg = json.loads((d / "adapter_config.json").read_text(encoding="utf-8"))
+    scale = cfg["lora_alpha"] / cfg["r"]
+    tensors = load_file(d / "adapter_model.safetensors")
+    params = dict(model.named_parameters())
+    n = 0
+    with torch.no_grad():
+        for k, a in tensors.items():
+            if not k.endswith(".lora_A.weight"):
+                continue
+            w = params[k[len("base_model.model."):-len(".lora_A.weight")] + ".weight"]
+            b = tensors[k.replace(".lora_A.weight", ".lora_B.weight")]
+            w += (b.to(w.dtype) @ a.to(w.dtype)) * scale
+            n += 1
+    if n == 0 or 2 * n != len(tensors):
+        raise ValueError(f"{d}: adapter có {len(tensors)} tensor nhưng chỉ ghép được {n} cặp lora_A / lora_B")
+    return n
+
+
 @register("asr", "gold")
 class GoldASR(ASR):
     """Dùng audio_text gold của train: đo trần khi nghe đúng hoàn toàn."""
@@ -59,10 +88,14 @@ class GoldASR(ASR):
 
 @register("asr", "hf_whisper", status="needs_deps")
 class HFWhisper(ASR):
-    """Whisper bất kỳ trên HuggingFace qua transformers (Whisper-turbo, PhoWhisper, PhoASR-whisper-small)."""
+    """Whisper bất kỳ trên HuggingFace qua transformers (Whisper-turbo, PhoWhisper, PhoASR-whisper-small).
+
+    adapter: thư mục adapter LoRA (định dạng PEFT) cộng vào `model` lúc nạp. Dùng khi nhiều ASR chung một bản gốc: image
+    chỉ mang một bản gốc + các adapter (mỗi cái khoảng 58 triệu tham số với PhoWhisper-large hạng 32) thay cho nhiều bản
+    đã gộp. Gộp ở fp32 rồi mới về dtype chạy, đúng thứ tự của scripts/finetune_whisper.py, nên tốc độ như bản gộp."""
 
     def __init__(self, model="openai/whisper-large-v3-turbo", num_beams=1, batch_size=16, dtype="float16",
-                 device="cuda:0", n_best=1, tokens_per_sec=10, generate=None, max_prompt_tokens=200, **_):
+                 device="cuda:0", n_best=1, tokens_per_sec=10, generate=None, max_prompt_tokens=200, adapter=None, **_):
         import torch
         from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
@@ -70,7 +103,12 @@ class HFWhisper(ASR):
         self.dtype = getattr(torch, dtype)
         self.device = device
         self.proc = AutoProcessor.from_pretrained(_local(model))
-        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(_local(model), torch_dtype=self.dtype).to(device).eval()
+        if adapter:
+            base = AutoModelForSpeechSeq2Seq.from_pretrained(_local(model), torch_dtype=torch.float32)
+            merge_lora_into(base, _local(adapter))
+            self.model = base.to(self.dtype).to(device).eval()
+        else:
+            self.model = AutoModelForSpeechSeq2Seq.from_pretrained(_local(model), torch_dtype=self.dtype).to(device).eval()
         self.num_beams = max(num_beams, n_best)
         self.n_best = n_best
         self.batch_size = batch_size

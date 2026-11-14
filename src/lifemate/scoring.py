@@ -38,11 +38,11 @@ def token_f1(pred, gold) -> float:
     return 2 * p * r / (p + r)
 
 
-def call_match(pred: dict, gold: dict, fuzzy: dict[str, set[str]]) -> bool:
+def call_match(pred: dict, gold: dict, fuzzy: dict[str, set[str]], *, gold_only: bool = False) -> bool:
     if pred.get("name") != gold.get("name"):
         return False
     pa, ga = pred.get("arguments") or {}, gold.get("arguments") or {}
-    if set(pa) != set(ga):
+    if not set(ga) <= set(pa) or (not gold_only and set(pa) != set(ga)):
         return False
     fz = fuzzy.get(gold["name"], set())
     for k, gv in ga.items():
@@ -54,12 +54,12 @@ def call_match(pred: dict, gold: dict, fuzzy: dict[str, set[str]]) -> bool:
     return True
 
 
-def match(pred_calls, gold_calls, fuzzy):
+def match(pred_calls, gold_calls, fuzzy, *, gold_only: bool = False):
     """Ghép tham lam theo thứ tự nộp; trả về (danh sách cặp pred->gold, tập gold đã khớp)."""
     used, pairs = set(), []
     for i, p in enumerate(pred_calls):
         for j, g in enumerate(gold_calls):
-            if j not in used and call_match(p, g, fuzzy):
+            if j not in used and call_match(p, g, fuzzy, gold_only=gold_only):
                 used.add(j)
                 pairs.append((i, j))
                 break
@@ -74,10 +74,10 @@ def response_type(calls) -> str:
     return "làm"
 
 
-def score_sample(split, pred_calls, pred_hash, gold_calls, gold_hash) -> dict:
+def score_sample(split, pred_calls, pred_hash, gold_calls, gold_hash, *, gold_only: bool = False) -> dict:
     fuzzy = data.fuzzy_params(split)
     hash_ok = pred_hash == gold_hash
-    pairs, used = match(pred_calls, gold_calls, fuzzy)
+    pairs, used = match(pred_calls, gold_calls, fuzzy, gold_only=gold_only)
     m = len(pairs)
     u = len(pred_calls) - m
     if not gold_calls:
@@ -99,6 +99,14 @@ def score_sample(split, pred_calls, pred_hash, gold_calls, gold_hash) -> dict:
     }
     out["error"] = classify(split, out, pred_calls, gold_calls, pairs, used)
     return out
+
+
+def score_faq(split, pred_calls, pred_hash, gold_calls, gold_hash) -> dict:
+    """FAQ: chỉ so khóa có trong gold; giữ nguyên fuzzy > 0,6, ghép call và cổng state_hash.
+
+    Điểm `score_sample` mặc định vẫn dùng bộ khóa bằng nhau để đối chiếu các run cũ.
+    """
+    return score_sample(split, pred_calls, pred_hash, gold_calls, gold_hash, gold_only=True)
 
 
 def _arg_kind(key: str, val) -> str:

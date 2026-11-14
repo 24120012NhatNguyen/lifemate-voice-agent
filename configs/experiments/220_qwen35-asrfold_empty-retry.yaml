@@ -1,0 +1,7 @@
+# Pro-R (12/11): như 175 (51,38 / 75,75) cộng cờ guards.empty_retry: call đọc có lọc chuỗi tuỳ chọn (query, program,
+# merchant...) trả danh sách rỗng thì gọi lại đúng tool đó không lọc và đưa danh sách đầy đủ cho LLM.
+# Căn cứ offline: vết 175 có 27 mẫu val_app + 5 val_random gặp đọc có lọc trả rỗng, cả 32 đều trượt (8,75 / 2,22 điểm);
+# gọi lại không lọc trên môi trường train làm hiện ID mà lệnh ghi gold cần ở 14/24 mẫu val_app và 2/3 val_random bỏ lọc
+# được. Gold train: 1/387 call đọc có lọc trả rỗng (lọc theo ngày, luật không đụng); phát lại gold với cờ bật: 0 thay đổi.
+extends: 175_qwen35-asrfold.yaml
+guards: {empty_retry: true}

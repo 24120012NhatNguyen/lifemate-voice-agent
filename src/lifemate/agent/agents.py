@@ -227,7 +227,8 @@ def _nudge(split: str, tools: list[str]) -> str:
 class ReactJSON(LLMAgent):
     """ReAct với prompt tự viết: mỗi bước LLM trả {"thought", "action": call|stop, "name", "arguments"}."""
 
-    def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, decision=None, **kw):
+    def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, decision=None,
+                 act_after_retry=False, **kw):
         """json_mode: off | object (chỉ ép JSON hợp lệ) | schema (ép action và tên tool trong tập đã cài).
         time_budget: giây cho cả mẫu, tính cả ASR (luật 30 s). Trước mỗi lượt LLM mà còn dưới min_step_sec thì
             dừng; lượt nào chạy quá phần còn lại cũng dừng. Các call đã gọi vẫn được nộp.
@@ -249,13 +250,21 @@ class ReactJSON(LLMAgent):
             ask_min, stop_min  ngưỡng; 0 là không bao giờ ghi đè
             later_ask_min, later_stop_min  ngưỡng riêng cho các bước sau bước quyết định đầu (scope pre_write);
                                mặc định bằng ask_min / stop_min
-            max_overrides      số lần ghi đè tối đa mỗi mẫu (mặc định không giới hạn ngoài max_steps)"""
+            max_overrides      số lần ghi đè tối đa mỗi mẫu (mặc định không giới hạn ngoài max_steps)
+            ask_apps: all      unseen: chỉ ghi đè câu hỏi lại về tool của app KHÔNG nằm trong `known` (app model SFT
+                               chưa thấy được dùng; ở app đã học model hỏi lại đúng phần lớn, ở app lạ thì quá dè dặt)
+            known: train_rest  train_rest | all | [app, ...] như recheck_stop (danh sách tên app khi không có dữ liệu
+                               train, vd. trong Docker)"""
         super().__init__(**kw)
         self.json_mode = {True: "object", False: "off"}.get(json_mode, json_mode)
         self.time_budget = time_budget
         self.min_step_sec = min_step_sec
         self.recheck = recheck_stop or {}
         self.decision = decision or {}
+        # act_after_retry: ngay sau khi guards.empty_retry trả về danh sách không lọc có mục (tên bị nghe sai nên lọc ra rỗng),
+        # bước kế tiếp bị cấm stop và sys.ask_missing_info đúng một lần (cần json_mode: schema): model phải chọn mục trong danh
+        # sách hoặc đọc tiếp. Vết 240: 11/22 lần như vậy model hỏi lại hoặc dừng, cả 11 mẫu có gold là làm và đang 0 điểm.
+        self.act_after_retry = act_after_retry
 
     def _in_scope(self, split, steps) -> bool:
         """Bước sắp tới có thuộc phạm vi chỉnh ngưỡng không."""
@@ -269,6 +278,15 @@ class ReactJSON(LLMAgent):
             if specs.get(s.get("name"), {}).get("kind") == "write":
                 return False
         return True
+
+    def _ask_app_ok(self, act) -> bool:
+        """Câu hỏi lại này có thuộc phạm vi ask_apps không (xem `decision`)."""
+        if self.decision.get("ask_apps", "all") != "unseen":
+            return True
+        known = self.decision.get("known", "train_rest")
+        known = set(known) if isinstance(known, list) else splits.known_apps(known)
+        tool = (act.get("arguments") or {}).get("tool_name")
+        return isinstance(tool, str) and "." in tool and tool.split(".")[0] not in known
 
     def _unseen_tools(self, sample) -> list[str]:
         if not self.recheck:
@@ -330,7 +348,7 @@ class ReactJSON(LLMAgent):
                 stop_min = dec.get("later_stop_min", dec.get("stop_min", 0)) if later else dec.get("stop_min", 0)
                 if act["action"] == "stop" and probs["p_stop"] < stop_min:
                     chosen = "stop"
-                elif act.get("name") == ASK and probs.get("p_ask", 1) < ask_min:
+                elif act.get("name") == ASK and probs.get("p_ask", 1) < ask_min and self._ask_app_ok(act):
                     chosen = "ask"
             if chosen:
                 left = self.time_budget - (time.perf_counter() - t0) if self.time_budget else None
@@ -379,6 +397,11 @@ class ReactJSON(LLMAgent):
             steps.append(step)
             msgs += [{"role": "assistant", "content": msg.content},
                      {"role": "user", "content": f"KẾT QUẢ {name}: {self._obs(obs)}"}]
+            if getattr(env, "retry_hit", False):
+                env.retry_hit = False
+                if self.act_after_retry and self.json_mode == "schema":
+                    once = no_ask
+                    step["act_after_retry"] = True
         return {"steps": steps, "system_chars": len(msgs[0]["content"])}
 
 

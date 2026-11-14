@@ -1,0 +1,7 @@
+# LM-49 (12/11, Pro 14:20): public 98fs = cấu hình 98r5 với soup(98r, 98f) (tools-pro/soup.py, trung bình 0,5 / 0,5).
+extends: 98r5_submit_public_qwen35-full-para-v1_asr2_rules198.yaml
+agent:
+  llm: {model: models/qwen35-4b-soup-98r-98f, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+# Pro 15:13: ASR chính của bản cuối là ft-all (công thức v1 trên toàn bộ audio train, N-best 4); ft2-all greedy vẫn là phương án thêm.
+# Pro 22:04: ASR ghép ft2-all chạy CÓ mồi profile_history_apps (203 so 195: +1,17 val_app trên mẫu bản ghép đổi; ước public +0,4).
+asr: {model: models/phowhisper-large-ft-all, merge_with: {model: models/phowhisper-large-ft2-all, num_beams: 1, batch_size: 16, hint: profile_history_apps}}

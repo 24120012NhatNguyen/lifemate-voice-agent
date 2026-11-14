@@ -51,14 +51,26 @@ class ASR:
         """Giải phóng GPU sau khi chạy xong tầng ASR."""
 
 
+SILENCE_SAMPLES = 8000  # nửa giây im lặng thay cho audio không đọc được
+
+
 def load_audio(path: Path) -> np.ndarray:
-    wav, sr = sf.read(str(path), dtype="float32", always_2d=False)
-    if wav.ndim > 1:
-        wav = wav.mean(axis=1)
-    if sr != 16000:
-        import torch
-        import torchaudio.functional as F
-        wav = F.resample(torch.from_numpy(wav), sr, 16000).numpy()
+    """Audio mono 16 kHz. File hỏng, thiếu hoặc rỗng trả nửa giây im lặng (ASR chép ra câu rỗng) thay vì ném lỗi:
+    một file xấu trong tập thi không được làm sập cả pha ASR, tức mất cả bài nộp."""
+    try:
+        wav, sr = sf.read(str(path), dtype="float32", always_2d=False)
+        if wav.ndim > 1:
+            wav = wav.mean(axis=1)
+        if sr != 16000 and len(wav):
+            import torch
+            import torchaudio.functional as F
+            wav = F.resample(torch.from_numpy(wav), sr, 16000).numpy()
+    except Exception as e:  # noqa: BLE001 - mọi lỗi đọc / giải mã đều xử lý như nhau
+        print(f"CẢNH BÁO: không đọc được audio {path}: {type(e).__name__}: {e}", flush=True)
+        return np.zeros(SILENCE_SAMPLES, dtype="float32")
+    if len(wav) < 400:  # dưới 25 ms: không đủ một khung đặc trưng
+        print(f"CẢNH BÁO: audio rỗng {path}", flush=True)
+        return np.zeros(SILENCE_SAMPLES, dtype="float32")
     return wav
 
 
@@ -85,7 +97,11 @@ def _app_rank() -> dict[str, int]:
     """
     f = os.environ.get("LIFEMATE_APP_RANK")
     if f:
-        return json.loads(Path(f).read_text(encoding="utf-8"))
+        try:
+            return json.loads(Path(f).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:  # file thiếu hay hỏng không được làm sập pha ASR
+            print(f"CẢNH BÁO: không đọc được $LIFEMATE_APP_RANK ({e}); mồi app giữ thứ tự installed_apps", flush=True)
+            return {}
     try:
         n = Counter(app for s in data.samples("train") for app in s["context"]["installed_apps"])
     except FileNotFoundError:
@@ -118,11 +134,11 @@ def bias_hint(sample: dict, mode: str, split: str = "train") -> str:
     """
     if mode == "none":
         return ""
-    p = sample["context"].get("user_profile", {})
-    words = [p.get("name", ""), p.get("city", "")]
+    p = sample["context"].get("user_profile") or {}  # khoá có thể mang giá trị null trong dữ liệu thi
+    words = [str(p.get("name") or ""), str(p.get("city") or "")]
     if mode.startswith("profile_history"):
-        blob = " ".join(t.get("text", "") + json.dumps(t.get("tool_results") or [], ensure_ascii=False)
-                        for t in sample.get("history", []) if t.get("role") == "assistant")
+        blob = " ".join((t.get("text") or "") + json.dumps(t.get("tool_results") or [], ensure_ascii=False)
+                        for t in sample.get("history") or [] if t.get("role") == "assistant")
         words += proper_names(blob)
     seen, out = set(), []
     for w in words:
@@ -197,6 +213,8 @@ def run_asr(split: str, samples: list[dict], cfg: dict, log=print) -> dict[str, 
     if merge:
         other = run_asr(split, samples, {"asr": {"name": asr_cfg["name"], "history": with_history, **merge}}, log)
         for sid, row in out.items():
+            # thời gian chép của ASR thứ hai cũng là thời gian của mẫu: time_budget và luật 30 giây tính cả hai lượt nghe
+            row["sec"] = round(row.get("sec", 0.0) + other[sid].get("sec", 0.0), 3)
             extra = other[sid]["final"]
             alts = list((row.get("alts") or {}).get("final") or [])
             if extra and _plain(extra) not in {_plain(x) for x in [row["final"], *alts]}:

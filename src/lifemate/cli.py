@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -60,7 +61,7 @@ def main(argv=None):
         root = data.data_root()
         cmd = [sys.executable, "-m", "zaic_tools", "--split", split, "--root", str(root),
                "--validate", str((run_dir / "predictions.jsonl").resolve())]
-        sys.exit(subprocess.call(cmd, cwd=root, env={"PYTHONPATH": str(root / split)}))
+        sys.exit(subprocess.call(cmd, cwd=root, env={**os.environ, "PYTHONPATH": str(root / split)}))
 
 
 if __name__ == "__main__":

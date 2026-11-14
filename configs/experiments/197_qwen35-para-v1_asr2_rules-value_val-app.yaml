@@ -1,0 +1,6 @@
+# LM-47 (12/11): như 195 cộng các luật giá trị của tầng D. clock_face (mới): lời nói đúng một giờ trên mặt đồng hồ thì
+# sửa phút lệch, và không nói buổi thì lấy lúc gần nhất còn phía trước khi ngày là hôm nay; train: 160 call gold thoả
+# điều kiện, 0 call bị đổi. phone_fix, rel_day_fix, now_offset_fix: luật của tầng chuẩn hoá (config 140), chưa bật ở 195.
+# Phát lại vết 195: val_app +0,66 (train_0618, train_0639), val_random +0,44 (train_0747), 0 mẫu tệ đi.
+extends: 195_qwen35-para-v1_asr2_val-app.yaml
+guards: {clock_face: true, phone_fix: true, rel_day_fix: true, now_offset_fix: true}

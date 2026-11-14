@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "baseline": "f1f0220",
+  "data_recipe": "98f: full train + 600 synth + D1 + 948 ASR folds",
+  "historical_code": [
+    {
+      "commit": "4d7a232799df0716153a894950d1077517b29a6e",
+      "name": "teacher",
+      "purpose": "Exact D1 generator and filters (MANIFEST code_commit)"
+    },
+    {
+      "commit": "16e6402a92a6b57f84f4bb2faac0f704e5801f18",
+      "name": "asr-fold",
+      "purpose": "Five-fold ASR trainer, splits and build_sft --asr-only"
+    }
+  ],
+  "files": [
+    {
+      "group": "sft",
+      "file": "train_synth.jsonl",
+      "destination": "data/sft/train_synth.jsonl",
+      "sha256": "b251018b74a93b1a82019d3fd3d3559898bb54f6736122458b34b4ffb939facb",
+      "lines": 1618,
+      "bytes": 24442626,
+      "source": "1018 train_rest + 600 synth v1; seed 2026; replay synth_v1_orders.json"
+    },
+    {
+      "group": "sft",
+      "file": "train_full_para_v1.jsonl",
+      "destination": "data/sft/train_full_para_v1.jsonl",
+      "sha256": "d8363b21c7124f37af26971999947f1be2df9b581567e9240325bd11737031d4",
+      "lines": 5133,
+      "bytes": 77208215,
+      "source": "1542 train + 600 synth v2 + 2991 D1"
+    },
+    {
+      "group": "sft",
+      "file": "train_full_para_v1_asrfold.jsonl",
+      "destination": "data/sft/train_full_para_v1_asrfold.jsonl",
+      "sha256": "7a42b39bf9f98ffc1efcd65fa846aa02f4ecfc79772c52973ffd076fa4d03c24",
+      "lines": 6081,
+      "bytes": 91957190,
+      "source": "5133 full+synthetic+D1 + 948 ASR fold; data of 98f seeds 0..6"
+    },
+    {
+      "group": "d1",
+      "file": "paraphrase_all.sft.jsonl",
+      "destination": "data/d1/paraphrase_all.sft.jsonl",
+      "sha256": "2cd3325062ae90433926dd91c4929772cc7afd4da6c8526413e393ae4a4787fe",
+      "lines": 2991,
+      "bytes": 45100834,
+      "source": "D1 all: Claude (Anthropic), filtered by independent Claude solver"
+    },
+    {
+      "group": "d1",
+      "file": "paraphrase_train_rest.sft.jsonl",
+      "destination": "data/d1/paraphrase_train_rest.sft.jsonl",
+      "sha256": "45a6e75e7bae0fb40b42d0402130a24a8c946e8c3008596a9597e1af6a08d347",
+      "lines": 1949,
+      "bytes": 29653393,
+      "source": "D1 train_rest: Claude (Anthropic)"
+    },
+    {
+      "group": "d1",
+      "file": "paraphrase_all.samples.jsonl",
+      "destination": "data/d1/paraphrase_all.samples.jsonl",
+      "sha256": "fcc5d6ac014d8f48e36e6eb3e29f311176aa8b117c37b920eb4c476b8fb139fc",
+      "lines": 2991,
+      "bytes": 5056839,
+      "source": "Generated D1 samples, train hosts; no original BTC files"
+    },
+    {
+      "group": "d1",
+      "file": "paraphrase_train_rest.samples.jsonl",
+      "destination": "data/d1/paraphrase_train_rest.samples.jsonl",
+      "sha256": "fba6965a1c40da74773744880b90b4c450dcef474449196c6c2137a80751aaed",
+      "lines": 1949,
+      "bytes": 3252001,
+      "source": "Generated D1 train_rest samples"
+    },
+    {
+      "group": "d1",
+      "file": "MANIFEST.json",
+      "destination": "data/d1/MANIFEST.json",
+      "sha256": "abc70caa4d9c5b5c0374d8d54c4600b74200d2218ef6253ae463068786190fc7",
+      "lines": null,
+      "bytes": 6232,
+      "source": "Original D1 provenance, unchanged"
+    },
+    {
+      "group": "fold",
+      "file": "asrfold_train_rest.jsonl",
+      "destination": "data/fold/asrfold_train_rest.jsonl",
+      "sha256": "1a69637d54ef5eeb9ff6dc8e924d0ffb7aa6e76491f817df5e2b8b49ffa10e31",
+      "lines": 948,
+      "bytes": 14748975,
+      "source": "948 out-of-fold ASR SFT rows; train_rest only"
+    }
+  ]
+}

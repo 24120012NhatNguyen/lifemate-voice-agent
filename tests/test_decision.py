@@ -215,3 +215,50 @@ def test_later_steps_use_their_own_thresholds_and_the_override_budget():
                           max_overrides=1)
     assert calls == [READ] and steps[0]["decision_override"]["from"] == "stop"
     assert "decision_override" not in steps[1]
+
+
+def test_ask_apps_unseen_only_overrides_asks_about_apps_outside_known():
+    app = WRITE.split(".")[0]
+    others = sorted({t.split(".")[0] for t in TOOLS} - {app})
+    kw = dict(mode="threshold", scope="pre_write", ask_min=0.7, ask_apps="unseen")
+    reqs, calls, steps = run([ASKING, WRITING, SURE_STOP], known=others, **kw)   # app của câu hỏi chưa được học
+    assert calls[0] == WRITE and steps[0]["decision_override"]["from"] == "ask"
+    reqs, calls, steps = run([ASKING, SURE_STOP], known=[app, *others], **kw)    # app đã học: giữ câu hỏi lại
+    assert calls == [ASK] and "decision_override" not in steps[0]
+
+
+def test_ask_apps_unseen_keeps_asks_without_a_tool_name():
+    blank = (call(ASK, params=["x"]), ASKING[1])
+    _, calls, steps = run([blank, SURE_STOP], mode="threshold", scope="pre_write", ask_min=0.7, ask_apps="unseen", known=[])
+    assert calls == [ASK] and "decision_override" not in steps[0]
+
+
+class RetryEnv(FakeEnv):
+    """Call đọc đầu tiên giả làm empty_retry vừa trả danh sách không lọc."""
+
+    def __init__(self):
+        super().__init__()
+        self.retry_hit = False
+
+    def call(self, name, args):
+        self.retry_hit = name == READ and not self.calls
+        return super().call(name, args)
+
+
+def run_retry(replies, **kw):
+    a = agents.ReactJSON(**kw)
+    a.llm = FakeLLM(replies)
+    env = RetryEnv()
+    steps = a.run("train", SAMPLE, {"final": SAMPLE["audio_text"]}, env)["steps"]
+    return a.llm.requests, env, steps
+
+
+def test_act_after_retry_bans_ask_and_stop_for_exactly_the_next_step():
+    reqs, env, steps = run_retry([READING, WRITING, SURE_STOP], act_after_retry=True)
+    assert actions(reqs[1]) == ["call"] and ASK not in names(reqs[1]) and steps[0]["act_after_retry"]
+    assert "stop" in actions(reqs[2]) and ASK in names(reqs[2]) and not env.retry_hit
+
+
+def test_act_after_retry_is_off_by_default_but_the_flag_is_still_cleared():
+    reqs, env, steps = run_retry([READING, SURE_STOP])
+    assert "stop" in actions(reqs[1]) and "act_after_retry" not in steps[0] and not env.retry_hit
