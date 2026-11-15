@@ -1,0 +1,8 @@
+# LM-97: opt-in pre-execution review; same public-shaped ASR/guards as 260.
+extends: 260_base_pub.yaml
+agent:
+  inference_review:
+    enabled: true
+    mode: verify
+    max_reviews: 2
+    known: train_rest

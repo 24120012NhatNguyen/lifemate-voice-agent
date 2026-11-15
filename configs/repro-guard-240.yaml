@@ -1,0 +1,63 @@
+# Frozen production guards used by build_guard_traces.py; training provenance only.
+split: train
+subset: val_random
+limit: null
+repeats: 1
+workers: 8
+asr:
+  name: hf_whisper
+  history: true
+  hint: none
+  model: models/phowhisper-large-ft
+  num_beams: 4
+  batch_size: 2
+  n_best: 4
+asr_post: []
+agent:
+  name: react_json
+  llm:
+    base_url: http://localhost:8000/v1
+    model: models/qwen35-4b-soup-175-175s1
+    temperature: 0.0
+    max_tokens: 400
+    seed: 0
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+  prompt: prompts/react_json.md
+  rules: prompts/rules/verified.md
+  timetable: two_weeks
+  schema: compact
+  history: full
+  ledger: true
+  max_steps: 8
+  json_mode: schema
+  time_budget: null
+  recheck_stop: null
+  show_alts: true
+  decision:
+    record: true
+guards:
+  validate: true
+  normalize: true
+  calendar_duration: true
+  id_guard: warn
+  id_sources:
+  - turn
+  - history
+  - utterance
+  id_harvest: all
+  dup_guard: warn
+  clock_fix: true
+  money_k: true
+  span_min: true
+  ask_missing: true
+  pick_one: true
+  phone_fix: true
+  rel_day_fix: true
+  now_offset_fix: true
+  clock_face: true
+  ask_resolve: true
+  empty_retry: true
+  calendar_create_end: true
+name: 240_qwen35-soup-175-175s1_prodguards

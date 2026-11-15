@@ -1,130 +1,116 @@
-# Gói nộp cho vòng private (Docker)
+# Hồ sơ nộp LifeMate — NHÁP LM-99, 15/11/2026
 
-Tài liệu cho BTC và cho đội khi dựng lại bài nộp. Phương pháp: [METHOD.md](METHOD.md). Kết quả kiểm tra Docker: [BASELINE.md](BASELINE.md) mục 10.
+**Chưa có image cuối. Chờ Pro chốt checkpoint/soup, cờ và dữ liệu sáng 16/11.**
+Đây là hồ sơ cho khung Docker Qwen3.5-4B, không phải biên nhận đã dựng hay đã nộp.
+Các số Docker của config 98 cũ ở `SUBMISSION_98_ARCHIVE.md` không đại diện bản này.
 
-## 1. Gói gồm những gì
+## Phương pháp và mã
 
-| Phần | Ở đâu |
-| --- | --- |
-| Image Docker `lifemate:98`: mã suy luận, hai môi trường Python ghim phiên bản, trọng số | `lifemate_98.tar.gz` (`docker save`), dựng lại bằng `scripts/docker_build.sh` |
-| Mã suy luận | `src/lifemate/`, `prompts/`, `configs/docker.yaml` (kế thừa `configs/experiments/98_*`, `91_*`, `90_*`, `base.yaml`), `docker/` |
-| Mã huấn luyện | `scripts/finetune_whisper.py` (ASR), `scripts/build_sft.py` (dữ liệu SFT), `scripts/train_sft.py`, `kaggle/run_sft.py`, `scripts/kaggle_pack.sh`, `scripts/merge_lora.py` (agent) |
-| Trọng số | `models/phowhisper-large-ft` (fp16), `models/qwen3-4b-sft-full` (bf16), có trong image; sha256 ở mục 5 |
-| Mô tả phương pháp | [METHOD.md](METHOD.md) |
+Audio → PhoWhisper-large gốc + adapter ft-all (N-best 4) → thêm bản nghe ft2-all
+(greedy, mồi `profile_history_apps`) → Qwen3.5-4B văn bản đã gộp → ReAct JSON/schema,
+guards → ToolEnv. Hai ASR chạy nối tiếp, chia sẻ cùng một bản trọng số gốc trong image.
+Không dùng soup ASR; kết quả −0,36 dạng public trong brief là lý do quản lý đã loại hướng đó,
+không phải phép đo mới của LM-99.
 
-`scripts/package_submission.sh` gom các phần trên vào `artifacts/submission/lifemate_98/` (image, mã nguồn ở commit hiện tại, `MANIFEST.txt` có sha256).
+| Thành phần | Mã trong gói |
+|---|---|
+| Suy luận | `src/lifemate/`, `prompts/`, `configs/docker-final.yaml`, `docker/` |
+| Train Qwen3.5 | `scripts/train_sft_q35r.py`, `kaggle/run_sft_q35.py`, `scripts/kaggle_q35.sh` |
+| Gộp model | `scripts/soup.py`, `scripts/merge_scaled.py`; chi tiết `docs/MERGE_SCALED.md` |
+| ASR | `scripts/finetune_whisper.py`, `scripts/whisper_lora_extract.py`, `scripts/export_app_rank.py` |
+| Dữ liệu | `scripts/build_sft.py`, `scripts/build_v2.py`, `scripts/build_guard_traces.py`, `scripts/build_rename_v2.py`, `scripts/synth_v3/`, `scripts/check_calc_sft.py`, `src/lifemate/numbers.py` |
+| Tái lập | `docs/REPRODUCE.md`, `docs/repro/final_code_sources.json`, `docs/submission_data_candidates.json` |
 
-## 2. Chạy
+Trainer giữ bước assistant có `"train": false` trong ngữ cảnh nhưng mask toàn bộ loss
+của body và `<|im_end|>`; không thay token đầu vào. Không có key này thì nhãn như trước.
+Mã train/data bổ sung chỉ phục vụ tái lập, không được khởi chạy bởi entrypoint Docker.
 
-```bash
-docker load -i lifemate_98.tar.gz
-```
+## Config và cờ
 
-```bash
-docker run --rm --gpus all --network none -v /đường/dẫn/gói-dữ-liệu:/data:ro -v /đường/dẫn/kết-quả:/result lifemate:98
-```
+`configs/docker-final-268.yaml` là snapshot **config.load** của 268 (242 +
+`act_after_retry=true`, `stop_scope=any`, `later_stop_min=0.8`, `max_overrides=1`).
+`docker-final.yaml` khớp toàn bộ tham số đó ngoài đường dẫn model và biểu diễn ASR
+bằng base + adapter. Config raw giữ `workers=8`, `time_budget=null` của 268;
+entrypoint Docker đặt `workers=1`, `agent.time_budget=25`. Đây là khác biệt triển khai
+có chủ ý, cần kiểm ảnh hưởng ngân sách khi smoke; không gọi nó là parity suy luận GPU.
 
-- `/data` là thư mục chứa `private_test/` (cùng cấu trúc với `public_test/` của gói dữ liệu: `<split>.jsonl`, `audio/`, `<split>_environment/`, `zaic_tools/`, `<split>_tools_catalog.json`), hoặc chính thư mục `private_test/`. Có `private_test/` thì chọn nó; không thì chọn split duy nhất khác `train`; đặt `-e SPLIT=...` để chọn tay.
-- Kết quả: `/result/submission.jsonl`, đúng định dạng `sample_submission.jsonl`, đã kiểm bằng `zaic_tools --validate` của split. Kèm theo: `runs/` (transcript, vết agent từng mẫu), `predict.log`, `vllm.log`, `timing.json`, `report.json`.
-- Không cần mạng, không cần `--ipc=host` hay `--shm-size`. Chạy như root mặc định của image.
-- GPU: một card từ 16 GB. vLLM giữ `GPU_UTIL` (mặc định 0,85) bộ nhớ card khi chạy agent. Driver NVIDIA từ 580; GPU trung tâm dữ liệu như A30 chạy được trên driver cũ hơn nhờ thư viện forward compatibility trong ảnh nền (chưa thử).
-- Trên RTX 5060 Ti 16 GB, 634 mẫu public mất 42,4 phút (4,0 giây mỗi mẫu kể cả nạp mô hình): ASR 6,1 phút, khởi động vLLM 1,5 phút, agent 34,8 phút. Mỗi mẫu chạy tuần tự: p99 9,0 giây, chậm nhất 10,7. Giới hạn 25 giây mỗi mẫu (tính cả ASR) là lưới an toàn, chưa cắt mẫu nào. Hai lượt ra cùng file từng byte. Chi tiết: BASELINE mục 10.
+Các cờ **mới** source/verify, bốn luật nhẹ, và `agent.calc` mặc định tắt. Các cờ
+production đã có trong 268 vẫn bật. `scripts/docker_swap.sh` luôn bắt đầu lại từ 268,
+không kế thừa cờ thử của ứng viên trước. Khi bật review, script ghi danh sách app known
+cụ thể, tránh tìm train trong image. Model tạm `qwen35-4b-soup-98f-7-dpo-a025` chỉ để
+kiểm khung; không đại diện quyết định cuối.
 
-Biến môi trường (`-e`): `SPLIT`, `CONFIG` (mặc định `configs/docker.yaml`), `LLM_MODEL`, `ASR_MODEL` (đổi trọng số, vd. gắn thêm `-v /models:/models:ro -e LLM_MODEL=/models/xyz`), `GPU_UTIL`, `LIMIT` (chạy thử trên vài mẫu).
+| Luật nhẹ (đang TẮT) | Chức năng | Δ FAQ val_app / val_random offline |
+|---|---|---|
+| `guards.xref_guard` | Chặn ID thấy ở bảng x-ref khác, trả ghi chú nguồn cần đọc | 0,00 / 0,00 |
+| `guards.explicit_defaults` | Điền mặc định rõ trong schema cho tool đọc | +0,17 / +0,15 |
+| `guards.ask_schema` | Loại tham số hỏi lại không có trong schema; nhắc nếu rỗng | 0,00 / 0,00 |
+| `guards.day_filter` | Điền ngày cho tool đọc khi câu nói có đúng một ngày | +0,19 / +0,30 |
+| Cả bốn | Phát lại hai lượt 260 | +0,36 / +0,44; tốt/tệ 3/0 app, 2/0 random |
 
-## 3. Dựng lại image
+Nguồn: `reports/LIGHT_RULES_1115.md` tại a468590. Phát lại chỉ đo thay call;
+phản ứng model với note cần phép đo GPU 267 do quản lý nghiệm thu. LM-99 không chạy GPU
+hoặc tự bật luật theo số offline. Cờ source/verify cũng chờ quản lý đọc kết quả 265.
 
-Cần Docker với BuildKit và NVIDIA Container Toolkit; lúc dựng cần mạng (tải ảnh nền, Python, các gói ghim).
+## Chính xác những model vào image
 
-```bash
-scripts/docker_build.sh
-```
+| Đường dẫn trong image | Tham số đếm từ header safetensors |
+|---|---:|
+| `models/phowhisper-large-base` | 1.543.304.960 |
+| `models/phowhisper-large-ft-all-lora` | 57.671.680 |
+| `models/phowhisper-large-ft2-all-lora` | 57.671.680 |
+| `models/qwen35-4b-soup-98f-7-dpo-a025` (ứng viên tạm) | 4.205.751.296 |
+| **Tổng** | **5.864.399.616** |
 
-- Ảnh nền `nvidia/cuda:13.0.3-base-ubuntu24.04`, Python 3.12.14 và uv 0.12.9.
-- `.venv`: gói của dự án theo `uv.lock` (torch 2.11.0+cu128, transformers 4.57.6) cho ASR và pipeline.
-- `.venv-vllm`: đúng 199 gói của môi trường đã sinh bản nộp public (`docker/requirements-vllm.txt`: vLLM 0.33.0, torch 2.14.0, triton 3.8.0).
-- Trọng số vào image qua hai build context `asr` và `llm`, nên `models/` là liên kết cũng được. Lớp trọng số nằm dưới lớp mã: sửa mã thì dựng lại trong vài giây. `VARIANT=slim` dựng image không có trọng số (gắn bằng `-v <models>:/app/models:ro`).
+Dư **135.600.384** dưới trần 6 tỷ. LLM là `qwen3_5_text`, không có tensor vision/LoRA
+hoặc adapter rời trong thư mục LLM. Build context tách đúng bốn thư mục, không copy
+cả `models/` của máy. `models/app_rank_train.json` là dữ liệu thứ hạng train, không
+phải model; Docker đặt `LIFEMATE_APP_RANK=/app/models/app_rank_train.json`.
+CPU checker đếm mọi safetensors, kiểm shard/index/offset/kích thước và từ chối checkpoint
+lồng, adapter dư hoặc file trọng số không được tính. Header hash không thay thế hash payload.
+Biên nhận cục bộ `artifacts/docker/final-cpu.json`; hash toàn trọng số/image do build sau chốt ghi lại.
 
-Kiểm tra: hai lượt cả public trong container phải ra cùng file từng byte, rồi đo độ trễ và bộ nhớ (cần khoá GPU chung khi máy có nhiều người dùng):
+## Dữ liệu và teacher
 
-```bash
-scripts/docker_check.sh
-```
+Danh sách có số dòng, kích thước, SHA-256 theo từng nhánh nằm trong
+`docs/submission_data_candidates.json`. **Tất cả trạng thái pending**, chưa có danh sách
+seed/hệ số soup để chọn tập cần gửi. Không đưa nguyên audio, catalog, environment hoặc
+JSONL gốc BTC vào archive mã. Các dữ liệu SFT dẫn xuất chỉ đóng gói theo allowlist sau khi chốt.
 
-## 4. Dựng lại mô hình từ đầu
+Teacher khai theo họ: **Claude (Anthropic), GPT (OpenAI), Gemini (Google)**.
+D1 hiện có provenance xác nhận Claude viết và Claude giải độc lập để lọc; không mặc định
+GPT/Gemini đã sinh D1 hoặc các nhánh khác. Synth v1/v2/v3, rename, calc và guard traces là
+biến đổi/sinh bằng mã; D1 diễn đạt lại và phần TTS của D1 phải giữ MANIFEST nguồn riêng.
 
-Môi trường huấn luyện, từ gốc repo, gói dữ liệu BTC đặt ở `../data/lifemate` (hoặc `LIFEMATE_DATA`):
+`src/lifemate/synth/scenarios.py::real_app_ids` chỉ đọc catalog train (sửa từ LM-57,
+đã có ở nền 07e01a4). LM-99 tái sinh file 1.618 dòng và phần 2.142 dòng full khớp byte
+nguồn cũ; 1.000 synth v3 và metadata cũng khớp byte sau đưa mã vào repo. Điều này chứng minh
+bỏ phụ thuộc catalog public không đổi dữ liệu đang dùng; không xoá lịch sử thiết kế đã ghi
+trong hồ sơ LM-48/LM-57. Quản lý quyết định cách khai lịch sử đó với BTC.
 
-```bash
-uv sync --extra asr --extra train --extra sft
-```
+## Handoff cho người dựng/nộp
 
-### 4.1. ASR: PhoWhisper-large-ft
-
-Một GPU 16 GB, khoảng 75 phút trên RTX 5060 Ti. Mặc định của script là đúng công thức đã nộp (3 epoch, lr 2e-4, LoRA r=32, batch 8, cộng dồn 2, warmup 0,1, seed 2026), học trên audio của `train_rest`:
-
-```bash
-.venv/bin/python scripts/finetune_whisper.py --model vinai/PhoWhisper-large --out models/phowhisper-large-ft
-```
-
-Script tự gộp adapter vào checkpoint fp16 và ghi `train_info.json` (WER dev từng epoch: 26,95 → 10,86 → 9,58 → 8,69).
-
-### 4.2. Dữ liệu SFT
-
-Chạy trên CPU, vài giây. Dùng chữ gold (`audio_text`) và call gold của cả 1.545 mẫu train; 3 mẫu bị bỏ vì call gold bị middleware cảnh báo, còn 1.542:
-
-```bash
-.venv/bin/python scripts/build_sft.py --subset all --out sft/train_full.jsonl
-```
-
-Bản đã huấn luyện có sha256 `a7580ffc7902baec…`. Dựng lại ngày 05/11 bằng mã hiện tại ra cùng 1.542 hội thoại, giống từng tin nhắn; file khác hash chỉ vì có thêm khoá `"asr": false` (thêm vào script sau đó, `train_sft.py` không đọc).
-
-### 4.3. Huấn luyện agent
-
-Bản nộp được huấn luyện trên Kaggle (T4, fp16), seed 0, khoảng 6 giờ 40 phút cho một lượt trên một T4:
-
-```bash
-scripts/kaggle_pack.sh sft/kaggle train_full
-```
-
-Tải `sft/kaggle/` lên làm dataset Kaggle riêng tư (dữ liệu BTC chỉ dành cho đội). Notebook bật GPU T4 x2 và Internet:
-
-```
-!pip -q uninstall -y torchao
-!pip -q install "transformers==4.57.6" "peft==0.21.2" accelerate
-!python $(find /kaggle/input -name run_sft.py | head -1) full
-```
-
-Tải `qwen3-4b-sft-full-lora.zip` ở tab Output, giải nén vào `models/qwen3-4b-sft-full-lora`, rồi gộp trên CPU (khoảng 2 phút, 16 GB RAM):
+Từ checkout này, liên kết/copy đúng các model đã cấp vào `models/`, rồi:
 
 ```bash
-.venv/bin/python scripts/merge_lora.py models/qwen3-4b-sft-full-lora models/qwen3-4b-sft-full
+scripts/docker_swap.sh /duong/dan/QWEN35_MERGED \
+  'guards.explicit_defaults=true guards.day_filter=true'
+# Chỉ truyền cờ đã được quản lý chốt; không truyền chuỗi cờ => tất cả cờ mới TẮT.
+# Khi đã có quyền dựng (không chạy trong LM-99):
+TAG=lifemate:final scripts/docker_build.sh
 ```
 
-Cùng công thức trên một GPU 16 GB của mình (khoảng 3 giờ trên RTX 5060 Ti, đỉnh khoảng 11 GB):
+Không cần tự đặt lại ASR/ADAPTERS/APP_RANK/LLM: build đọc config và inventory đã kiểm,
+kiểm CPU lại trước lệnh Docker. Sửa config tay sau swap sẽ bị từ chối do receipt cũ.
+Mỗi lần đổi model/cờ cần chạy swap lại. Những lệnh tiếp theo chỉ cho giai đoạn được cấp quyền:
 
 ```bash
-.venv/bin/python scripts/train_sft.py --data sft/train_full.jsonl --out models/qwen3-4b-sft-full --dtype fp16
+IMAGE=lifemate:final scripts/docker_cpu_check.sh
+# Smoke GPU và kiểm lặp phải dùng split/private fixture được quản lý cấp, không tự đọc public.
+docker run --rm --gpus all --network none \
+  -v /duong/dan/private_test:/data/private_test:ro -v /duong/dan/result:/result lifemate:final
 ```
 
-Huấn luyện lại không ra đúng từng bit trọng số: thứ tự cộng dồn trên GPU khác nhau theo card và phiên bản torch của Kaggle không ghim. Cùng dữ liệu và seed, bản bf16 ở máy nhà được 43,17 public so với 44,70 của bản Kaggle (khác trạng thái cuối ở 159/634 mẫu), cỡ một lần đổi seed. Muốn đúng bài nộp thì dùng trọng số trong image.
-
-### 4.4. Chạy lại ngoài Docker
-
-```bash
-.venv/bin/lifemate run configs/experiments/29_asr_phowhisper-large-ft_public.yaml
-```
-
-```bash
-scripts/gpu_job.sh eval models/qwen3-4b-sft-full configs/experiments/98_submit_public_full_fixes.yaml
-```
-
-## 5. Trọng số
-
-| Thư mục | Tham số | Kiểu | sha256 |
-| --- | --- | --- | --- |
-| `phowhisper-large-ft/model.safetensors` | 1.543.304.960 | fp16 | `2964e9d19183eff09d4151ba63c438961d32d4c47bad734530fc9f6eb53f2a88` |
-| `qwen3-4b-sft-full/model-00001-of-00002.safetensors` | 4.022.468.096 (cả hai file) | bf16 | `b206f76b3f49eb1311cf632db3dda027e6cc6a79ccfc4fb8250e7abe14b351a4` |
-| `qwen3-4b-sft-full/model-00002-of-00002.safetensors` | | | `2df463cb8d7148d368aa6c0d6a9ca567495c2e96269442f57a56bd803fe1aa88` |
-
-Tổng 5.565.773.056 tham số (dưới 6 tỷ), LLM 4,02 tỷ (dưới 5 tỷ). Mô hình gốc: `vinai/PhoWhisper-large` (BSD-3-Clause, 12/2023), `Qwen/Qwen3-4B-Instruct-2507` (Apache-2.0, 07/2025).
+Cần ghi thêm trước nộp: image digest/tar SHA-256, full payload hashes, model lineage/soup
+coefficients, dữ liệu đã chọn, license/revision chính thức, GPU đích/A30, độ trễ/p99/max,
+VRAM, lỗi chạy và kết quả kiểm lặp. CPU pass không thay các kiểm chứng này.

@@ -1,0 +1,125 @@
+# Snapshot config.load(268_public_final.yaml); no dataset read. LM-99.
+split: public_test
+subset: all
+limit: null
+repeats: 1
+workers: 8
+asr:
+  name: hf_whisper
+  history: true
+  hint: none
+  model: models/phowhisper-large-ft-all
+  num_beams: 4
+  batch_size: 2
+  n_best: 4
+  merge_with:
+    model: models/phowhisper-large-ft2-all
+    num_beams: 1
+    batch_size: 16
+    hint: profile_history_apps
+asr_post: []
+agent:
+  name: react_json
+  llm:
+    base_url: http://localhost:8000/v1
+    model: models/qwen35-4b-soup-98f-7-dpo-a025
+    temperature: 0.0
+    max_tokens: 400
+    seed: 0
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+  prompt: prompts/react_json.md
+  rules: prompts/rules/verified.md
+  timetable: two_weeks
+  schema: compact
+  history: full
+  ledger: true
+  max_steps: 8
+  json_mode: schema
+  time_budget: null
+  recheck_stop: null
+  show_alts: true
+  decision:
+    record: true
+    mode: threshold
+    scope: pre_write
+    ask_min: 0.7
+    stop_min: 0.0
+    later_ask_min: 0.7
+    later_stop_min: 0.8
+    max_overrides: 1
+    ask_apps: unseen
+    known:
+    - alarm
+    - appliances
+    - banking
+    - bike_rental
+    - bill_payment
+    - calculator
+    - calendar
+    - chat_ott
+    - contacts
+    - door_lock
+    - email
+    - ewallet
+    - exchange_rate
+    - fitness
+    - flights
+    - food_delivery
+    - fuel_price
+    - gold_price
+    - home_automation
+    - home_energy
+    - home_security
+    - household_chores
+    - learning
+    - library
+    - lottery
+    - loyalty
+    - maps
+    - medication
+    - music
+    - news
+    - notes
+    - package_tracking
+    - phone
+    - podcast_radio
+    - reminders
+    - ride_hailing
+    - robot_vacuum
+    - shopping_list
+    - smart_home
+    - sms
+    - subscriptions
+    - sys
+    - tasks
+    - tv
+    - video_meeting
+    - weather
+    stop_scope: any
+  act_after_retry: true
+guards:
+  validate: true
+  normalize: true
+  calendar_duration: true
+  id_guard: warn
+  id_sources:
+  - turn
+  - history
+  - utterance
+  id_harvest: all
+  dup_guard: warn
+  clock_fix: true
+  money_k: true
+  span_min: true
+  ask_missing: true
+  pick_one: true
+  phone_fix: true
+  rel_day_fix: true
+  now_offset_fix: true
+  clock_face: true
+  ask_resolve: true
+  empty_retry: true
+  calendar_create_end: true
+name: 268_public_final

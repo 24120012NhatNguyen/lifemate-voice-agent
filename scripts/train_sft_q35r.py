@@ -86,13 +86,19 @@ def keep_efficient_sdpa(dev: torch.device, say=print) -> None:
         say("GPU trước Ampere: SDPA không dùng enable_gqa (lặp K/V theo nhóm) để giữ kernel tiết kiệm bộ nhớ", flush=True)
 
 
+def trained(m: dict) -> bool:
+    """Tin nhắn có loss: lượt assistant, trừ khi mang "train": false (LM-92: bước sai còn trong ngữ cảnh nhưng không học,
+    vd. call lọc trả rỗng trước ghi chú empty_retry). Hàng không có khoá "train" cho nhãn y như trước."""
+    return m["role"] == "assistant" and m.get("train", True) is not False
+
+
 def encode_scaffold(tok, messages: list[dict]) -> tuple[list[int], list[int], str]:
     """Một lượt cho cả hội thoại, khung think rỗng trước MỌI lượt assistant; phục vụ bằng prompts/qwen35_scaffold.jinja
     (vllm --chat-template) nên prefix của từng bước trùng từng token."""
     ids, labels, text = [], [], ""
     for m in messages:
-        if set(m) - {"role", "content"} or m["role"] not in {"system", "user", "assistant"}:
-            raise ValueError("chỉ nhận role/content của react_json")
+        if set(m) - {"role", "content", "train"} or m["role"] not in {"system", "user", "assistant"}:
+            raise ValueError("chỉ nhận role/content (và train) của react_json")
         c = m["content"].strip()
         if "<think>" in c or "<|im_start|>" in c or "<|im_end|>" in c:
             raise ValueError("token dành riêng trong dữ liệu")
@@ -102,7 +108,7 @@ def encode_scaffold(tok, messages: list[dict]) -> tuple[list[int], list[int], st
         body = tok.encode(b, add_special_tokens=False)
         tail = tok.encode("\n", add_special_tokens=False)
         ids += head + body + tail
-        labels += [-100] * len(head) + (body if m["role"] == "assistant" else [-100] * len(body)) + [-100] * len(tail)
+        labels += [-100] * len(head) + (body if trained(m) else [-100] * len(body)) + [-100] * len(tail)
         text += h + b + "\n"
     if ids != tok.encode(text, add_special_tokens=False):
         raise ValueError("mã hoá từng đoạn lệch với mã hoá cả chuỗi")
@@ -123,7 +129,7 @@ def encode(tok, messages: list[dict]) -> tuple[list[int], list[int]]:
         body = tok.encode(f"{m['content']}<|im_end|>", add_special_tokens=False)
         tail = tok.encode("\n", add_special_tokens=False)
         ids += head + body + tail
-        labels += [-100] * len(head) + (body if m["role"] == "assistant" else [-100] * len(body)) + [-100] * len(tail)
+        labels += [-100] * len(head) + (body if trained(m) else [-100] * len(body)) + [-100] * len(tail)
     return ids, labels
 
 

@@ -1,0 +1,9 @@
+# Pro 15/11 (LIGHT_RULES_1115): 260_base_pub + bốn luật nhẹ trong guards (xref_guard, explicit_defaults, ask_schema,
+# day_filter).
+# Cùng ASR (ft N-best 4 + ft2 có mồi), cùng soup 211; chỉ khác cờ guards.
+extends: 260_base_pub.yaml
+guards:
+  xref_guard: true
+  explicit_defaults: true
+  ask_schema: true
+  day_filter: true

@@ -1,0 +1,5 @@
+extends: 260_base_pub.yaml
+agent:
+  decision:
+    ask_min: 0.85
+    later_ask_min: 0.85

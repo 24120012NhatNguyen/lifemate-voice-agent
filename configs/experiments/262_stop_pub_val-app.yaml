@@ -1,0 +1,2 @@
+extends: 262_stop_pub.yaml
+subset: val_app

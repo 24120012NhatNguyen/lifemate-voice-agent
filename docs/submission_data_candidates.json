@@ -1,0 +1,188 @@
+{
+  "status": "DRAFT_PENDING_MANAGER_SELECTION",
+  "selected_final_recipe": null,
+  "recipes": {
+    "baseline_175_98f": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "train_para_v1_asrfold.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold.jsonl",
+          "sha256": "320231ad3362f9bb6ee205ba746144f5ea65b3ec319c9ebb85aa942d5f8f64ee",
+          "bytes": 68844994,
+          "lines": 4515
+        },
+        {
+          "file": "train_full_para_v1_asrfold.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold.jsonl",
+          "sha256": "7a42b39bf9f98ffc1efcd65fa846aa02f4ecfc79772c52973ffd076fa4d03c24",
+          "bytes": 91957190,
+          "lines": 6081
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val.jsonl",
+          "sha256": "b00cd461cf773235990843ee50f1613989ef9f78b6a6101a57177efdf258da73",
+          "bytes": 99259341,
+          "lines": 6561
+        }
+      ]
+    },
+    "tts_d1_v2": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "train_para_v2.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v2.jsonl",
+          "sha256": "8a00b0c9627ba08c39e5708b957acf6e6f9f0f1b658e50d1cf1874e14d44fd7c",
+          "bytes": 82115925,
+          "lines": 5412
+        },
+        {
+          "file": "train_para_v2_asrfold.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v2_asrfold.jsonl",
+          "sha256": "a15e211140de98f25393fbc5ff800e6170e45f276df5f6706dd67022ef78ffeb",
+          "bytes": 96864900,
+          "lines": 6360
+        },
+        {
+          "file": "train_full_para_v2.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v2.jsonl",
+          "sha256": "b3b69728c5b4e978c5ccea8b9ed2bdbaa2f4c5898cf919941372202676aa5159",
+          "bytes": 119319656,
+          "lines": 7935
+        }
+      ]
+    },
+    "guard": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "guard_traces_rest.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/guard_traces_rest.jsonl",
+          "sha256": "3dad4657c5ba95981261cfb3008361644c133412cfb5879c1bb26d1d738fe338",
+          "bytes": 4655603,
+          "lines": 259
+        },
+        {
+          "file": "guard_traces_full.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/guard_traces_full.jsonl",
+          "sha256": "f0eecf0fa9026224e270c185fb5e8e2fa162825e0d330330a755283253ea1782",
+          "bytes": 6488434,
+          "lines": 367
+        },
+        {
+          "file": "train_para_v1_asrfold_guard.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold_guard.jsonl",
+          "sha256": "9a80bc6febaa9c837ad3ea5c66c1bae0374655d681500ca08c889e78c99aa85c",
+          "bytes": 73500597,
+          "lines": 4774
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val_guard.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val_guard.jsonl",
+          "sha256": "0d41cf44822ea8e25329deab0ce952d27a7d28d7ec241df889a7326dbe7b081e",
+          "bytes": 105747775,
+          "lines": 6928
+        }
+      ]
+    },
+    "rename_v2": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "train_para_v1_asrfold_ren2.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold_ren2.jsonl",
+          "sha256": "2568b9f46ac9c1575bee9c605575813565980b02cc08f03b575767ad5735ed50",
+          "bytes": 86322302,
+          "lines": 5644
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val_ren2.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val_ren2.jsonl",
+          "sha256": "317238c4287f50735e1abf72bf72d1244f57c73a96fe29209b3b51b70a1d3120",
+          "bytes": 124409696,
+          "lines": 8201
+        }
+      ]
+    },
+    "synth_v3_1000": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "synth_v3.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/synth_v3.jsonl",
+          "sha256": "ab5ca8e92f8cef0a8c25ddfcbf53fc1adb633473526c0c7f0fbba06b94065aad",
+          "bytes": 14988846,
+          "lines": 1000
+        },
+        {
+          "file": "synth_v3.samples.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/synth_v3.samples.jsonl",
+          "sha256": "ef9735a9038ea19dff1dbc71c57b0004accd0c55023f84fd7df36e7b620dff9e",
+          "bytes": 5470257,
+          "lines": 1000
+        },
+        {
+          "file": "train_para_v1_asrfold_sv3.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold_sv3.jsonl",
+          "sha256": "64b9cec43fbbdd767cfda95774a81ede48aca70005214e72cd072e053e504f85",
+          "bytes": 74873780,
+          "lines": 4915
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val_sv3.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val_sv3.jsonl",
+          "sha256": "3de532b26c374f75e4efd80e191c5e6a7622be6b8e951a6a7d214df6a9c29af4",
+          "bytes": 105398492,
+          "lines": 6961
+        }
+      ]
+    },
+    "synth_v3_400": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "synth_v3_400.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/synth_v3_400.jsonl",
+          "sha256": "e8662d90b837614ddf73d6de66901f4e88bd18b1dbda4c335cc3a22fee5eb89f",
+          "bytes": 5909124,
+          "lines": 400
+        },
+        {
+          "file": "train_para_v1_asrfold_sv3_400.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold_sv3_400.jsonl",
+          "sha256": "78601b74ca7bfcbaa6b367f3dd2bfed859b2043b16e7395839a32be50673c80d",
+          "bytes": 65794058,
+          "lines": 4315
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val_sv3_400.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val_sv3_400.jsonl",
+          "sha256": "9ea6a18c840a6a44eac3b64d5fc242716697ead1c09f0cce870bab88a33e3f09",
+          "bytes": 96318770,
+          "lines": 6361
+        }
+      ]
+    },
+    "calc": {
+      "status": "pending model/soup selection",
+      "files": [
+        {
+          "file": "train_para_v1_asrfold_calc.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_para_v1_asrfold_calc.jsonl",
+          "sha256": "870db6e4b5ce0ac904c78f32aa8c9acc77b943978e4310ce3aa7be10efd55bda",
+          "bytes": 69844279,
+          "lines": 4515
+        },
+        {
+          "file": "train_full_para_v1_asrfold_val_calc.jsonl",
+          "local_source": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold_val_calc.jsonl",
+          "sha256": "a99dfe94d7d48969f4652ec342b3143efb14fdddae3b19cae0dc1584d3ddd4ef",
+          "bytes": 100711186,
+          "lines": 6561
+        }
+      ]
+    }
+  }
+}

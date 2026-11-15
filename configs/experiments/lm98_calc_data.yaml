@@ -1,0 +1,6 @@
+# Data-only config: identical to config 10 except agent.calc=true.
+# For inference, extend the paired Qwen3.5 baseline and enable agent.calc there;
+# this config deliberately retains config 10's model and all prompt options.
+extends: 10_qwen3-4b_gold_react.yaml
+agent:
+  calc: true

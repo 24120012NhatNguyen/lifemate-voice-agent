@@ -51,3 +51,7 @@ venv/
 
 # Local kernel packages for Qwen3.5 training (pip --target)
 .q35-deps/
+
+# Local model/environment symlinks used by isolated CPU worktrees
+/models
+/.venv

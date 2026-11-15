@@ -1,0 +1,6 @@
+extends: 260_base_pub.yaml
+agent:
+  decision:
+    stop_scope: any
+    later_stop_min: 0.8
+    max_overrides: 1

@@ -8,6 +8,7 @@
 set -uo pipefail
 IMAGE=${IMAGE:-lifemate:q35}
 docker run --rm --network none -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 --entrypoint bash "$IMAGE" -c '
+set -o pipefail
 fail=0
 ok() { echo "ĐẠT   $*"; }
 bad() { echo "HỎNG  $*"; fail=1; }
@@ -49,11 +50,11 @@ fi
 chk "config nạp được, tuần tự, có time_budget" .venv/bin/python -c "
 import os
 from lifemate.config import load
-c = load(os.environ[\"CONFIG\"])
+c = load(os.environ[\"CONFIG\"], [\"workers=1\", \"agent.time_budget=25\"])
 assert c[\"workers\"] == 1 and c[\"agent\"][\"time_budget\"] and c[\"agent\"][\"llm\"][\"temperature\"] == 0.0, c
 print(c[\"workers\"], c[\"agent\"][\"time_budget\"], c[\"asr\"])
 "
-.venv/bin/python scripts/docker_report.py --params-only --models "$ASR_MODEL" "$LLM_MODEL" $(ls -d models/*-lora 2>/dev/null) | head -8 || fail=1
+.venv/bin/python scripts/docker_report.py --params-only --models "$ASR_MODEL" "$LLM_MODEL" $(ls -d models/*-lora 2>/dev/null) || fail=1
 .venv-vllm/bin/python -c "import importlib.metadata as m; print(\"vllm\", m.version(\"vllm\"), \"torch\", m.version(\"torch\"), \"transformers\", m.version(\"transformers\"), \"triton\", m.version(\"triton\"))"
 [ $fail = 0 ] && echo "KIỂM CPU: ĐẠT" || echo "KIỂM CPU: CÓ MỤC HỎNG"
 exit $fail'

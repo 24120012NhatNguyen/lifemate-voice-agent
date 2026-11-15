@@ -18,6 +18,7 @@ from ..config import REPO
 from ..numbers import calc
 from ..registry import register
 from .llm import LLM, LLMTimeout
+from .review import InferenceReview, action_key, valid_action
 
 
 class Agent:
@@ -228,10 +229,13 @@ class ReactJSON(LLMAgent):
     """ReAct với prompt tự viết: mỗi bước LLM trả {"thought", "action": call|stop, "name", "arguments"}."""
 
     def __init__(self, json_mode="schema", time_budget=None, min_step_sec=1.5, recheck_stop=None, decision=None,
-                 act_after_retry=False, **kw):
+                 act_after_retry=False, inference_review=None, **kw):
         """json_mode: off | object (chỉ ép JSON hợp lệ) | schema (ép action và tên tool trong tập đã cài).
         time_budget: giây cho cả mẫu, tính cả ASR (luật 30 s). Trước mỗi lượt LLM mà còn dưới min_step_sec thì
             dừng; lượt nào chạy quá phần còn lại cũng dừng. Các call đã gọi vẫn được nộp.
+        inference_review: {enabled: false, mode: source | verify, max_reviews: 2, known: train_rest}
+            LM-97: rà bản nháp trước thực thi, tối đa hai lượt thêm; xem agent/review.py.
+            Chỉ mẫu có app đã cài ngoài known; lỗi review giữ bản nháp; cờ tắt giữ trace cũ.
         recheck_stop: {mode: nudge | force, known: train_rest | all | [app, ...]}. Bước đầu đã stop mà máy có app
             không nằm trong call gold của tập `known` (app mô hình SFT chưa thấy được dùng; danh sách tên app khi
             không có dữ liệu train, vd. trong Docker) thì hỏi lại đúng một lần:
@@ -247,8 +251,12 @@ class ReactJSON(LLMAgent):
                                ghi decision_override vào bước
             scope: first       chỉ bước quyết định đầu; pre_write: mọi bước trước lệnh ghi đầu tiên và trước khi đã
                                hỏi lại
+            stop_scope: pre_write  mặc định giữ nguyên `scope` ở trên; any: cho phép ghi đè stop cả sau lệnh ghi,
+                               nhưng không sau khi đã hỏi lại hoặc stop. Không mở rộng phạm vi ask.
+            unseen_only: false chỉ ghi đè stop khi có app đã cài (có tool, khác sys) không nằm trong `known`;
+                               stop không có tool đích, nên đây là điều kiện trên app đã cài, không đoán ý định
             ask_min, stop_min  ngưỡng; 0 là không bao giờ ghi đè
-            later_ask_min, later_stop_min  ngưỡng riêng cho các bước sau bước quyết định đầu (scope pre_write);
+            later_ask_min, later_stop_min  ngưỡng riêng cho các bước sau bước quyết định đầu (kể cả sau lệnh ghi);
                                mặc định bằng ask_min / stop_min
             max_overrides      số lần ghi đè tối đa mỗi mẫu (mặc định không giới hạn ngoài max_steps)
             ask_apps: all      unseen: chỉ ghi đè câu hỏi lại về tool của app KHÔNG nằm trong `known` (app model SFT
@@ -261,10 +269,15 @@ class ReactJSON(LLMAgent):
         self.min_step_sec = min_step_sec
         self.recheck = recheck_stop or {}
         self.decision = decision or {}
+        if self.decision.get("stop_scope", "pre_write") not in ("pre_write", "any"):
+            raise ValueError("decision.stop_scope must be pre_write or any")
         # act_after_retry: ngay sau khi guards.empty_retry trả về danh sách không lọc có mục (tên bị nghe sai nên lọc ra rỗng),
         # bước kế tiếp bị cấm stop và sys.ask_missing_info đúng một lần (cần json_mode: schema): model phải chọn mục trong danh
         # sách hoặc đọc tiếp. Vết 240: 11/22 lần như vậy model hỏi lại hoặc dừng, cả 11 mẫu có gold là làm và đang 0 điểm.
         self.act_after_retry = act_after_retry
+        self.inference_review = InferenceReview(inference_review)
+        if self.inference_review.enabled and self.json_mode != "schema":
+            raise ValueError("inference_review requires json_mode: schema")
 
     def _in_scope(self, split, steps) -> bool:
         """Bước sắp tới có thuộc phạm vi chỉnh ngưỡng không."""
@@ -287,6 +300,19 @@ class ReactJSON(LLMAgent):
         known = set(known) if isinstance(known, list) else splits.known_apps(known)
         tool = (act.get("arguments") or {}).get("tool_name")
         return isinstance(tool, str) and "." in tool and tool.split(".")[0] not in known
+
+    def _stop_in_scope(self, split, steps, sample) -> bool:
+        """Giữ phạm vi cũ trừ khi bật any; luôn tôn trọng stop / ask đã chốt."""
+        if self.decision.get("stop_scope", "pre_write") == "any":
+            in_scope = not any(s.get("action") == "stop" or s.get("name") == ASK for s in steps)
+        else:
+            in_scope = self._in_scope(split, steps)
+        if not in_scope or not self.decision.get("unseen_only", False):
+            return in_scope
+        known = self.decision.get("known", "train_rest")
+        known = set(known) if isinstance(known, list) else splits.known_apps(known)
+        return any(app != "sys" and app not in known and a.get("tools")
+                   for app, a in sample["context"]["installed_apps"].items())
 
     def _unseen_tools(self, sample) -> list[str]:
         if not self.recheck:
@@ -312,6 +338,9 @@ class ReactJSON(LLMAgent):
         threshold = dec.get("mode") == "threshold" and self.json_mode == "schema"
         lp_kw = {"logprobs": True, "top_logprobs": dec.get("top_logprobs", 20)} if dec.get("record") or threshold else {}
         no_ask = _json_schema(_action_schema([t for t in installed if t != ASK], actions=("call",)))
+        review = self.inference_review
+        review_on = review.sample_enabled(sample)
+        reviews_used = 0
         once = None  # kw riêng cho đúng lượt kế tiếp (recheck force)
         for _ in range(self.max_steps + (4 if self.calc else 0)):  # bước sys.calc không tính vào max_steps
             req = once or kw
@@ -341,14 +370,16 @@ class ReactJSON(LLMAgent):
             if probs:
                 step.update(probs)
             chosen = None
-            if ok and in_scope and probs and sum(1 for s in steps if s.get("decision_override")) < dec.get(
+            if ok and threshold and probs and sum(1 for s in steps if s.get("decision_override")) < dec.get(
                     "max_overrides", self.max_steps):
                 later = any(s.get("action") in ("call", "stop") for s in steps)
                 ask_min = dec.get("later_ask_min", dec.get("ask_min", 0)) if later else dec.get("ask_min", 0)
                 stop_min = dec.get("later_stop_min", dec.get("stop_min", 0)) if later else dec.get("stop_min", 0)
-                if act["action"] == "stop" and probs["p_stop"] < stop_min:
+                if (act["action"] == "stop" and probs["p_stop"] < stop_min
+                        and self._stop_in_scope(split, steps, sample)):
                     chosen = "stop"
-                elif act.get("name") == ASK and probs.get("p_ask", 1) < ask_min and self._ask_app_ok(act):
+                elif (in_scope and act.get("name") == ASK and probs.get("p_ask", 1) < ask_min
+                      and self._ask_app_ok(act)):
                     chosen = "ask"
             if chosen:
                 left = self.time_budget - (time.perf_counter() - t0) if self.time_budget else None
@@ -376,6 +407,41 @@ class ReactJSON(LLMAgent):
                 msgs += [{"role": "assistant", "content": msg.content or ""},
                          {"role": "user", "content": 'Sai định dạng. Trả đúng một JSON: {"thought": "...", "action": "call", "name": "...", "arguments": {...}} hoặc {"thought": "...", "action": "stop"}'}]
                 continue
+            if review_on and review.eligible(split, act, steps, reviews_used):
+                # A threshold override / retry may have narrowed the action mask. Keep it.
+                review_req = no_ask if step.get("decision_override") else req
+                left = self.time_budget - (time.perf_counter() - t0) if self.time_budget else None
+                event = {"mode": review.mode, "proposal_raw": msg.content, "attempted": False,
+                         "changed": False, "status": "budget_skip"}
+                step["inference_review"] = event
+                if left is None or left >= self.min_step_sec:
+                    from openai import APIError
+
+                    reviews_used += 1  # failures count too; never recursively review a replacement
+                    event["attempted"] = True
+                    started = time.perf_counter()
+                    try:
+                        review_req = {**review_req, **({"timeout": left} if left is not None else {})}
+                        msg2, meta2 = self.llm.chat(review.messages(msgs, msg.content), **review_req)
+                        event.update(raw=msg2.content,
+                                     **{k: meta2.get(k, 0) for k in ("sec", "prompt_tokens", "completion_tokens")})
+                        for k in ("sec", "prompt_tokens", "completion_tokens"):
+                            step[k] = step.get(k, 0) + meta2.get(k, 0)
+                        act2 = _parse_action(msg2.content)
+                        if valid_action(act2, review_req):
+                            event.update(status="accepted", changed=action_key(act2) != action_key(act))
+                            # Keep original bytes if the proposed action is unchanged.
+                            if event["changed"]:
+                                step["raw"] = msg2.content
+                                msg, act = msg2, act2
+                        else:
+                            event["status"] = "invalid"
+                    except (LLMTimeout, APIError) as exc:
+                        event.update(status="timeout" if isinstance(exc, LLMTimeout) else "api_error",
+                                     sec=time.perf_counter() - started)
+                        step["sec"] = step.get("sec", 0) + event["sec"]
+                    # Review notes are local to the extra request. Only the selected action is
+                    # appended to the main conversation below; no speculative call reaches env.
             step.update(action=act["action"], thought=act.get("thought", ""))
             if act["action"] == "stop":
                 steps.append(step)

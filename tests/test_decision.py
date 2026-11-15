@@ -262,3 +262,96 @@ def test_act_after_retry_bans_ask_and_stop_for_exactly_the_next_step():
 def test_act_after_retry_is_off_by_default_but_the_flag_is_still_cleared():
     reqs, env, steps = run_retry([READING, SURE_STOP])
     assert "stop" in actions(reqs[1]) and "act_after_retry" not in steps[0] and not env.retry_hit
+
+
+@pytest.mark.parametrize('scope', ['first', 'pre_write'])
+@pytest.mark.parametrize('replies', [[WRITING, STOPPING], [READING, SURE_STOP], [ASKING, STOPPING]])
+def test_default_stop_scope_preserves_legacy_trace_and_requests(scope, replies):
+    kw = dict(mode='threshold', scope=scope, stop_min=0.7, later_stop_min=0.8)
+    assert run(replies, **kw) == run(replies, stop_scope='pre_write', **kw)
+
+
+def test_any_stop_scope_regenerates_after_write_and_records_original_probability():
+    reqs, calls, steps = run([WRITING, STOPPING, READING, SURE_STOP], mode='threshold',
+                             stop_scope='any', stop_min=0, later_stop_min=0.8, max_overrides=1)
+    assert calls == [WRITE, READ]
+    assert reqs[1]['messages'] == reqs[2]['messages']
+    assert actions(reqs[2]) == ['call'] and ASK not in names(reqs[2])
+    assert steps[1]['decision_override'] == {'from': 'stop', 'p': 0.4, 'raw': STOPPING[0]}
+    assert steps[1]['sec'] == 2
+
+
+@pytest.mark.parametrize('p', [0.8, 0.905, 0.99])
+def test_any_stop_scope_keeps_stop_at_or_above_threshold(p):
+    reply = (stop(), {'action': [('stop', p), ('call', 1-p)]})
+    _, calls, steps = run([WRITING, reply], mode='threshold', stop_scope='any', later_stop_min=0.8)
+    assert calls == [WRITE] and 'decision_override' not in steps[1]
+
+
+def test_any_stop_scope_does_not_open_ask_scope_or_continue_after_ask():
+    _, calls, steps = run([WRITING, ASKING, STOPPING], mode='threshold', scope='pre_write',
+                          stop_scope='any', ask_min=0.9, later_stop_min=0.8)
+    assert calls == [WRITE, ASK] and not any(s.get('decision_override') for s in steps)
+
+
+def test_any_stop_scope_shares_override_budget_with_ask():
+    _, calls, steps = run([ASKING, WRITING, STOPPING], mode='threshold', scope='pre_write',
+                          stop_scope='any', ask_min=0.9, later_stop_min=0.8, max_overrides=1)
+    assert calls == [WRITE] and steps[0]['decision_override']['from'] == 'ask'
+    assert 'decision_override' not in steps[1]
+    _, calls, steps = run([WRITING, STOPPING, READING, STOPPING], mode='threshold',
+                          stop_scope='any', later_stop_min=0.8, max_overrides=1)
+    assert calls == [WRITE, READ] and 'decision_override' not in steps[-1]
+
+
+def test_any_scope_alone_is_disabled_without_threshold_mode_or_positive_threshold():
+    for dec in [dict(stop_scope='any', later_stop_min=0.8), dict(mode='threshold', stop_scope='any')]:
+        _, calls, steps = run([WRITING, STOPPING], **dec)
+        assert calls == [WRITE] and 'decision_override' not in steps[-1]
+
+
+@pytest.mark.parametrize('known, fires', [(list(SAMPLE['context']['installed_apps']), False), ([], True)])
+def test_stop_unseen_only_uses_installed_apps_and_explicit_known(known, fires):
+    replies = [WRITING, STOPPING] + ([READING, SURE_STOP] if fires else [])
+    _, calls, steps = run(replies, mode='threshold', stop_scope='any', later_stop_min=0.8,
+                          unseen_only=True, known=known, max_overrides=1)
+    assert bool(steps[1].get('decision_override')) == fires
+    assert calls == ([WRITE, READ] if fires else [WRITE])
+
+
+def test_stop_unseen_only_resolves_known_subset_and_excludes_sys(monkeypatch):
+    seen = []
+    monkeypatch.setattr(splits, 'known_apps', lambda subset: seen.append(subset) or {'app'})
+    a = agents.ReactJSON(decision={'stop_scope': 'any', 'unseen_only': True})
+    sample = {'context': {'installed_apps': {'app': {'tools': ['app.write']},
+                                            'sys': {'tools': [ASK]}, 'empty': {'tools': []}}}}
+    assert not a._stop_in_scope('train', [], sample)
+    assert seen == ['train_rest']
+    sample['context']['installed_apps']['new'] = {'tools': ['new.read']}
+    assert a._stop_in_scope('train', [], sample)
+    assert not a._stop_in_scope('train', [{'action': 'stop'}], sample)
+
+
+def test_stop_scope_rejects_typo():
+    with pytest.raises(ValueError, match='stop_scope'):
+        agents.ReactJSON(decision={'stop_scope': 'anny'})
+
+
+def test_any_stop_scope_keeps_original_when_probabilities_missing():
+    _, calls, steps = run([WRITING, (stop(), {})], mode='threshold', stop_scope='any', later_stop_min=0.8)
+    assert calls == [WRITE] and 'decision_override' not in steps[-1]
+
+
+def test_any_stop_scope_keeps_original_when_regeneration_invalid():
+    reqs, calls, steps = run([WRITING, STOPPING, ('invalid json', {})], mode='threshold',
+                             stop_scope='any', later_stop_min=0.8)
+    assert calls == [WRITE] and steps[-1]['raw'] == STOPPING[0] and len(reqs) == 3
+
+
+@pytest.mark.parametrize('json_mode', ['object', 'off'])
+def test_any_stop_scope_needs_schema_mode(json_mode):
+    a = agents.ReactJSON(json_mode=json_mode, decision=dict(mode='threshold', stop_scope='any', later_stop_min=0.8))
+    a.llm = FakeLLM([WRITING, STOPPING])
+    env = FakeEnv()
+    steps = a.run('train', SAMPLE, {'final': SAMPLE['audio_text']}, env)['steps']
+    assert env.calls == [WRITE] and len(a.llm.requests) == 2 and 'decision_override' not in steps[-1]

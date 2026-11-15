@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Dựng image nộp (docker/Dockerfile). Trọng số đi vào qua hai build context riêng, nên models/ có là liên kết
-# (sang worktree khác) cũng được: đường dẫn được giải ra thư mục thật trước khi đưa cho Docker.
-#   scripts/docker_build.sh                                 lifemate:98, trọng số trong image
-#   VARIANT=slim TAG=lifemate:98-slim scripts/docker_build.sh   không trọng số, gắn bằng -v <models>:/app/models:ro
-#   LLM=models/qwen3-4b-sft-synth TAG=lifemate:synth scripts/docker_build.sh
-#   CONFIG=configs/docker-nbest.yaml TAG=lifemate:98n scripts/docker_build.sh   bản nộp 98 nghe N-best 4
-# Ghi id image, cỡ và sha256 trọng số vào artifacts/docker/<tag>.txt.
+# Dựng ứng viên cuối sau scripts/docker_swap.sh; mặc định CONFIG=configs/docker-final.yaml, TAG=lifemate:final.
+# Với bản cuối, CPU checker quyết định đúng bốn build context từ receipt; không copy cả models/.
+# Legacy: CONFIG=configs/docker.yaml ASR=... LLM=... TAG=lifemate:98 scripts/docker_build.sh
+# Ghi image id, cỡ và full sha256 trọng số vào artifacts/docker/<tag>.txt.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 cd "$HERE"
-TAG=${TAG:-lifemate:98}
+# Final candidate defaults are read from its CPU-checked config and exact context inventory.
+# Set CONFIG to a legacy config to retain the old explicit ASR/LLM/ADAPTERS path.
+CONFIG=${CONFIG:-configs/docker-final.yaml}
+if [ "$(readlink -f "$CONFIG")" = "$HERE/configs/docker-final.yaml" ]; then
+  export PYTHONDONTWRITEBYTECODE=1
+  export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
+  final_env=$("${PY:-.venv/bin/python}" scripts/docker_final.py build-env)
+  eval "$final_env"  # only fixed keys and shlex.quote values emitted by our CPU checker
+fi
+TAG=${TAG:-lifemate:final}
 VARIANT=${VARIANT:-full}
 ASR=${ASR:-models/phowhisper-large-ft}
 LLM=${LLM:-models/qwen3-4b-sft-full}
-CONFIG=${CONFIG:-configs/docker.yaml}
 args=(-f docker/Dockerfile --build-arg "VARIANT=$VARIANT" --build-arg "CONFIG=$CONFIG" -t "$TAG")
 ADAPTERS=${ADAPTERS:-}   # hai thư mục adapter LoRA của ASR (VARIANT=full2), vd. "models/a-lora models/b-lora"
 if [ -n "$ADAPTERS" ]; then

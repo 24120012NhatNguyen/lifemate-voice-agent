@@ -12,6 +12,10 @@ user "KẾT QUẢ ..." lấy từ `label.tool_results`, và kết thúc bằng m
 Config có `agent.calc: true`: trước mỗi call ghi có giá trị không nói thẳng ra mà tính được bằng một phép tính từ số đã có
 (lời nói, kết quả tool, lịch sử), chèn một bước `sys.calc` với biểu thức đó và kết quả của nó (src/lifemate/numbers.py).
 
+--from-sft FILE: chế độ opt-in giữ nguyên hỗn hợp SFT có sẵn, kể cả ASR theo fold và paraphrase/synth. Khi agent.calc
+bật, chỉ gold/fold được chèn bước calc; mọi dòng thêm mô tả sys.calc vào prompt. Khi tắt, sao chép nguyên byte.
+Không gọi ASR/LLM/ToolEnv trong chế độ này; ghi thêm .stats.json với hash, phân bố và từng biểu thức.
+
 --asr-keep-entities chỉ dùng bản chép đó khi mọi giá trị chuỗi người dùng nói ra trong call gold vẫn còn nguyên văn
 trong nó: nếu không, đáp án đòi một tên mà bản chép đã mất và mô hình học đoán (docs/BASELINE.md mục 8).
 
@@ -36,14 +40,16 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import random
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
 from lifemate import config, context, data, splits, synth
-from lifemate.agent.agents import CALC, ReactJSON
+from lifemate.agent.agents import CALC, CALC_LINE, ReactJSON
 from lifemate.asr.base import run_asr
 from lifemate.asr.metrics import entity_spans, norm
 from lifemate.config import REPO
@@ -257,6 +263,93 @@ def conversation(agent: ReactJSON, sample: dict, transcript: dict, renamer: Rena
     return msgs
 
 
+def calc_from_row(row: dict, agent: ReactJSON, samples: dict, specs: dict) -> tuple[dict, list[dict]]:
+    """Augment an existing mixture without regenerating ASR, paraphrases or synth.
+
+    Only gold/fold rows receive steps. Every row receives the same calc schema
+    suffix as system_prompt, including paraphrase/synth negatives. Disabled is
+    an identity operation. Reject prompt or trajectory drift instead of guessing.
+    """
+    if not agent.calc:
+        return row, []
+    out = copy.deepcopy(row)
+    msgs = out["messages"]
+    suffix = agent.template.split("{{schema}}")
+    if len(suffix) != 2 or "{{" in suffix[1] or agent.opts["schema"] == "none":
+        raise ValueError("--from-sft requires a template ending with a rendered schema and literal suffix")
+    system = msgs[0]["content"]
+    if msgs[0]["role"] != "system" or not system.endswith(suffix[1]) or CALC in system:
+        raise ValueError(f"{row['id']}: incompatible or already augmented system prompt")
+    msgs[0]["content"] = system[:-len(suffix[1])] + CALC_LINE + suffix[1] if suffix[1] else system + CALC_LINE
+    if "asr" not in row:
+        if not (row.get("teacher") or row.get("synth")):
+            raise ValueError(f"{row['id']}: unknown row provenance")
+        return out, []
+    if row.get("renamed"):
+        raise ValueError(f"{row['id']}: renamed gold is unsupported")
+    sample = samples[row["id"].removesuffix("_valasr")]
+    if msgs[0]["content"] != agent.system_prompt(SPLIT, sample):
+        raise ValueError(f"{row['id']}: prompt differs from the supplied config")
+    marker = 'YÊU CẦU CUỐI CỦA NGƯỜI DÙNG (bản chép lời):\n"'
+    user = msgs[1]["content"]
+    if msgs[1]["role"] != "user" or user.count(marker) != 1:
+        raise ValueError(f"{row['id']}: cannot extract final transcript")
+    final = user.split(marker, 1)[1].split('"\n\nBản nghe khác của cùng câu:', 1)[0]
+    if not final.endswith('"') and '"\n\nBản nghe khác của cùng câu:' not in user:
+        raise ValueError(f"{row['id']}: unexpected transcript suffix")
+    said = final if '"\n\nBản nghe khác của cùng câu:' in user else final[:-1]
+    # Preserve the exact stored user prompt (including ASR history and N-best).
+    # conversation is also the reference for every unaugmented gold message.
+    old = conversation(agent, sample, {"final": said}, None)[2:]
+    if msgs[2:] != old:
+        raise ValueError(f"{row['id']}: gold calls/observations differ from build_sft")
+    calcs = calc_steps(sample, said, specs)
+    tail = conversation(agent, sample, {"final": said}, None, calcs)[2:]
+    out["messages"] = msgs[:2] + tail
+    records = []
+    for i, expressions in calcs.items():
+        call = sample["label"]["tool_calls"][i]
+        for expr in expressions:
+            result = calc(expr)
+            params = [k for k, v in call["arguments"].items() if not isinstance(v, bool) and v == result]
+            if not params or str(result).startswith("lỗi"):
+                raise ValueError(f"{row['id']}: calc does not match a gold argument: {expr}")
+            records.append({"id": row["id"], "asr": row["asr"], "call_index": i,
+                            "tool": call["name"], "parameters": params, "expression": expr, "result": result})
+    return out, records
+
+
+def augment_sft(source: Path, out: Path, agent: ReactJSON) -> dict:
+    """CPU-only, train-only transform; disabled mode copies bytes exactly."""
+    if source.resolve() == out.resolve():
+        raise ValueError("--from-sft input and output must differ")
+    # Read/validate everything before opening output; a failed check leaves no partial dataset.
+    raw = source.read_bytes()
+    rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+    samples, specs = (data.by_id(SPLIT), data.tool_specs(SPLIT)) if agent.calc else ({}, {})
+    stats, expressions, records, transformed = Counter(), Counter(), [], []
+    for line_no, row in enumerate(rows, 1):
+        updated, events = calc_from_row(row, agent, samples, specs)
+        transformed.append(updated)
+        kind = ("fold" if row["asr"] else "gold") if "asr" in row else "paraphrase" if row.get("teacher") else "synth"
+        stats[f"rows_{kind}"] += 1
+        if events:
+            stats[f"calc_rows_{kind}"] += 1
+        for event in events:
+            records.append({"line": line_no, **event})
+            expressions[event["expression"]] += 1
+    blob = ("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in transformed).encode() if agent.calc else raw)
+    report = {"source": str(source.resolve()), "output": str(out.resolve()), "calc_enabled": agent.calc,
+              "source_sha256": hashlib.sha256(raw).hexdigest(), "output_sha256": hashlib.sha256(blob).hexdigest(),
+              "rows": len(rows), "calc_rows": sum(v for k, v in stats.items() if k.startswith("calc_rows_")),
+              "calc_steps": len(records), "unique_expressions": len(expressions), "counts": dict(stats),
+              "expressions": dict(sorted(expressions.items())), "records": records}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(blob)
+    out.with_suffix(".stats.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {k: v for k, v in report.items() if k not in ("records", "expressions")}
+
+
 def synth_samples(a, hosts: list[dict]) -> list[dict]:
     """Mẫu tổng hợp của lượt dựng: --synth N sinh mới (tất định theo --seed), --synth-replay phát lại một lượt cũ."""
     if a.synth_replay:
@@ -274,6 +367,8 @@ def main(argv=None):
     ap.add_argument("--config", default="configs/experiments/10_qwen3-4b_gold_react.yaml",
                     help="config của agent sẽ chạy: lấy prompt, luật, ngữ cảnh và ASR từ đây")
     ap.add_argument("--out", default="sft/train.jsonl")
+    ap.add_argument("--from-sft", type=Path, default=None,
+                    help="opt-in: preserve an existing SFT mixture; agent.calc=true adds calc to gold/fold only; false copies bytes")
     ap.add_argument("--rename", type=float, default=0.0, help="xác suất một mẫu được đổi tên app, tool, tham số")
     ap.add_argument("--drop-heldout", action="store_true",
                     help="gỡ app của val_app khỏi installed_apps và bỏ mẫu có lịch sử gọi chúng, để val_app đo đúng app chưa thấy")
@@ -296,6 +391,11 @@ def main(argv=None):
     agent = build("agent", cfg["agent"])
     if not isinstance(agent, ReactJSON):
         sys.exit(f"config {a.config} không dùng agent react_json")
+    if a.from_sft is not None:
+        if (a.rename or a.drop_heldout or a.asr_config or a.synth or a.synth_replay or a.limit or a.subset != SUBSET):
+            sys.exit("--from-sft cannot be combined with generation options; subset is defined by the input file")
+        print(json.dumps(augment_sft(a.from_sft, REPO / a.out, agent), ensure_ascii=False))
+        return
     pool = splits.select(SPLIT, a.subset, a.limit)
     if a.subset == SUBSET:
         held = {s["id"] for sub in ("val_random", "val_app") for s in splits.select(SPLIT, sub)}

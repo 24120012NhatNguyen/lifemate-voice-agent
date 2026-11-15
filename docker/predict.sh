@@ -99,7 +99,7 @@ if command -v nvidia-smi >/dev/null; then  # bộ nhớ GPU cả card, mỗi 0,5
   SMI=$!
 fi
 
-SETS=(--set "split=$SPLIT" --set "subset=$SUBSET" --set "asr.model=$ASR_MODEL" --set "agent.llm.model=$LLM_MODEL"
+SETS=(--set "workers=1" --set "agent.time_budget=25" --set "split=$SPLIT" --set "subset=$SUBSET" --set "asr.model=$ASR_MODEL" --set "agent.llm.model=$LLM_MODEL"
       --set "agent.llm.base_url=http://127.0.0.1:$PORT/v1")
 if [ -n "${LIMIT:-}" ]; then SETS+=(--set "limit=$LIMIT"); fi  # chạy thử trên LIMIT mẫu
 for kv in ${EXTRA_SET:-}; do SETS+=(--set "$kv"); done        # ghi đè thêm khi kiểm, vd. EXTRA_SET="workers=8"

@@ -1,0 +1,3 @@
+extends: 260_base_pub.yaml
+agent:
+  act_after_retry: true

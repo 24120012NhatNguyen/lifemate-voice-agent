@@ -24,6 +24,20 @@
                                         rỗng: gọi lại đúng tool đó không lọc (giữ tham số bắt buộc, số, ngày giờ ISO) và
                                         đưa danh sách đầy đủ cho LLM. Gold train: 1/387 call đọc có lọc trả rỗng (lọc theo
                                         ngày, luật không đụng); vết 175: 32/32 mẫu gặp đọc rỗng đều trượt (Pro-R)
+    xref_guard         true | false     tham số có `x-ref` "app.C" nhận một ID mà các kết quả đã thấy (lượt này, lịch sử) chỉ
+                                        đặt trong một bảng khác cũng là bảng x-ref của catalog (vd. course_id = evt_904 của
+                                        `events`): không chạy, trả ghi chú tên tool nguồn. Gold train: 0 / 1.725 call bị chặn
+    explicit_defaults  true | false     tool ĐỌC thiếu tham số tuỳ chọn mà mô tả schema nêu giá trị mặc định suy được không cần
+                                        state ("bỏ trống = thành phố của người dùng", "mặc định motorbike" trong enum): điền
+                                        giá trị đó. Môi trường dùng đúng mặc định ấy nên kết quả không đổi; FAQ bỏ qua tham số
+                                        thừa nên không bao giờ mất điểm, gold có ghi rõ thì khớp thêm
+    day_filter         true | false     tool ĐỌC có tham số ngày tuỳ chọn dạng YYYY-MM-DD (không giờ) mà LLM bỏ trống hết, trong
+                                        khi lời lượt cuối nêu đúng một ngày (normalize.spoken_dates): điền ngày đó vào mọi
+                                        tham số ngày của tool. Gold train, khi lời nêu đúng một ngày: 23/23 call có ngày trùng
+                                        ngày đó; 89 call bỏ trống mà lọc theo ngày đó không giấu ID nào gold dùng sau
+    ask_schema         true | false     LLM hỏi lại một tham số không có trong schema của tool: bỏ tham số đó khỏi câu hỏi;
+                                        không còn tham số nào thì không ghi câu hỏi, trả ghi chú các tham số bắt buộc (gold
+                                        train: 0 / 217 câu hỏi có tham số ngoài schema; RESEARCH_75 R3)
 
 Câu hỏi lại của ask_missing, pick_one được hoãn tới `finish()` (runner gọi khi agent xong), để agent làm nốt các phần
 đủ thông tin như luật 9 của prompts/rules/verified.md; gửi ngay thì môi trường trả `waiting_for_user` và agent dừng luôn.
@@ -59,7 +73,60 @@ DEFAULTS = {
     "clock_face": False,
     "ask_resolve": False,
     "empty_retry": False,
+    "xref_guard": False,
+    "explicit_defaults": False,
+    "ask_schema": False,
+    "day_filter": False,
 }
+_CITY_DEFAULT = re.compile(r"bỏ trống\s*(?:=|là|thì)\s*(?:lấy\s*|mặc định\s*)?(?:là\s*)?thành phố của người dùng", re.I)
+_ENUM_DEFAULT = re.compile(r"mặc định\s*(?:là\s*|bằng\s*)?([\w-]+)", re.I)
+
+
+def id_collections(obj, into: dict, key: str | None = None) -> None:
+    """{id: {tên bảng}}: ID của mỗi phần tử nằm trong một danh sách kết quả, theo khoá của danh sách đó ("events", "chats")."""
+    if isinstance(obj, dict):
+        if key and isinstance(obj.get("id"), str):
+            into.setdefault(obj["id"], set()).add(key)
+        for k, v in obj.items():
+            if isinstance(v, list):
+                for x in v:
+                    id_collections(x, into, k)
+            elif isinstance(v, dict):
+                id_collections(v, into, None)  # "item": {...} một phần tử: không rõ bảng
+    elif isinstance(obj, list):
+        for x in obj:
+            id_collections(x, into, key)
+
+
+def day_params(spec: dict) -> list[str]:
+    """Tham số ngày tuỳ chọn (YYYY-MM-DD, không giờ) của một tool đọc."""
+    if spec.get("kind") != "read":
+        return []
+    params = spec.get("parameters") or {}
+    req = set(params.get("required") or [])
+    return [p for p, d in (params.get("properties") or {}).items()
+            if p not in req and isinstance(d, dict) and d.get("type") == "string"
+            and "YYYY-MM-DD" in (d.get("description") or "") and "ISO" not in (d.get("description") or "")]
+
+
+def read_defaults(spec: dict, args: dict, city: str | None) -> dict:
+    """explicit_defaults: tham số tuỳ chọn còn thiếu của một tool đọc mà mô tả nêu mặc định không cần state."""
+    if spec.get("kind") != "read":
+        return {}
+    params = spec.get("parameters") or {}
+    req = set(params.get("required") or [])
+    out = {}
+    for p, d in (params.get("properties") or {}).items():
+        if p in args or p in req or not isinstance(d, dict):
+            continue
+        desc = d.get("description") or ""
+        if city and d.get("type") == "string" and _CITY_DEFAULT.search(desc):
+            out[p] = city
+            continue
+        m = _ENUM_DEFAULT.search(desc)
+        if m and d.get("enum") and m.group(1) in d["enum"]:
+            out[p] = m.group(1)
+    return out
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
@@ -109,12 +176,18 @@ class GuardedEnv:
         self.resolved: set[str] = set()  # tool mà ask_resolve đã trả ID thay cho câu hỏi lại
         self.picked = False
         self.retry_hit = False  # empty_retry vừa trả về danh sách không lọc có mục
+        self.id_colls: dict[str, set] = {}  # xref_guard: ID -> các bảng (khoá danh sách) đã thấy nó
+        self.xref_colls = {str(d.get("x-ref")).partition(".")[2] for sp in self.specs.values()
+                           for d in ((sp.get("parameters") or {}).get("properties") or {}).values()
+                           if isinstance(d, dict) and d.get("x-ref")}
+        self.schema_asked: set[str] = set()  # ask_schema: tool đã được trả ghi chú một lần
         for turn in sample.get("history", []):
             for r in turn.get("tool_results") or []:
                 self._harvest(r, self.ids_history)
             for c in turn.get("tool_calls") or []:
                 self._harvest(c.get("arguments"), self.ids_history)
             fixes.strings([turn.get("tool_results"), turn.get("tool_calls"), turn.get("text")], self.seen)
+            id_collections(turn.get("tool_results"), self.id_colls)
 
     # -- thu ID và sự kiện đã thấy ------------------------------------------------------------
     def _harvest(self, obj, into: set):
@@ -161,6 +234,23 @@ class GuardedEnv:
                         v += "+07:00"
                     clean[p] = v
         self.fix_notes = []
+        self.filled = {}
+        self.day_filled = {}
+        if self.cfg["explicit_defaults"]:
+            city = ((self.sample.get("context") or {}).get("user_profile") or {}).get("city")
+            self.filled = read_defaults(self.specs.get(name, {}), clean, city if isinstance(city, str) and city else None)
+            clean.update(self.filled)
+        if self.cfg["day_filter"]:
+            dps = day_params(self.specs.get(name, {}))
+            if dps and not any(p in clean for p in dps):
+                from . import normalize as N
+                try:
+                    days = N.spoken_dates(self.utterance or "", self.now)
+                except (ValueError, TypeError, OverflowError):
+                    days = []
+                if len(days) == 1:
+                    self.day_filled = {p: days[0] for p in dps}
+                    clean.update(self.day_filled)
         if any(self.cfg[r] for r in FIX_RULES) and self.specs.get(name, {}).get("kind") == "write":
             try:
                 clean, self.fix_notes = fixes.fix_args(name, clean, self.specs[name], self.utterance, self.now, self.seen,
@@ -193,6 +283,10 @@ class GuardedEnv:
         rec["arguments"] = clean
         if self.fix_notes:
             rec["fixes"] = self.fix_notes
+        if self.filled:
+            rec["defaults"] = dict(self.filled)
+        if self.day_filled:
+            rec["day_filter"] = dict(self.day_filled)
         warnings = []
 
         if self.cfg["validate"]:
@@ -202,6 +296,24 @@ class GuardedEnv:
                 self.log.append(rec)
                 return {"ok": False, "error": v.get("error"), "note": "call chưa chạy, không tính vào bài nộp"}
 
+        if self.cfg["xref_guard"]:
+            bad = self._xref_wrong(name, clean)
+            if bad:
+                obs = {"ok": True, "done": False, "message": bad,
+                       "note": "call chưa chạy, không tính vào bài nộp"}
+                rec.update(decision="chặn: ID sai bảng (xref_guard)", result=obs)
+                self.log.append(rec)
+                return obs
+        if name == "sys.ask_missing_info" and self.cfg["ask_schema"]:
+            out = self._ask_schema(clean)
+            if out is not None:
+                if "note" in out:
+                    rec.update(decision="chặn: hỏi tham số ngoài schema (ask_schema)", result=out)
+                    self.log.append(rec)
+                    return out
+                rec["ask_schema"] = {"dropped": [p for p in clean["params"] if p not in out["params"]]}
+                clean = out
+                rec["arguments"] = clean
         try:
             ask = self._ask_instead(name, clean)
         except (ValueError, TypeError, OverflowError):  # ngày giờ lạ đã qua validate: không hỏi lại thay, chạy call như LLM viết
@@ -258,6 +370,7 @@ class GuardedEnv:
         obs = self.env.call(name, clean)
         self.seen_calls.add(sig)
         self._harvest(obs, self.ids_turn)
+        id_collections(obs, self.id_colls)
         fixes.strings([obs, clean], self.seen)
         rec.update(decision="chạy" + (" (cảnh báo)" if warnings else ""), result=obs, warnings=warnings)
         self.log.append(rec)
@@ -283,6 +396,7 @@ class GuardedEnv:
         obs2 = self.env.call(name, wide)
         self.seen_calls.add(sig)
         self._harvest(obs2, self.ids_turn)
+        id_collections(obs2, self.id_colls)
         fixes.strings([obs2, wide], self.seen)
         self.log.append({"name": name, "proposed": wide, "arguments": wide, "decision": "chạy (gọi lại không lọc)",
                          "result": obs2, "warnings": []})
@@ -292,6 +406,44 @@ class GuardedEnv:
         dropped = ", ".join(f"{k}={clean[k]!r}" for k in clean if k not in wide)
         return {**obs2, "note": f"không có mục nào khớp {dropped}; đây là kết quả gọi lại {name} không lọc, "
                                 "chọn đúng mục người dùng nói (tên có thể bị nghe sai)"}
+
+    def _xref_wrong(self, name: str, clean: dict) -> str | None:
+        """xref_guard: thông báo khi một tham số x-ref "app.C" nhận ID chỉ thấy trong bảng x-ref khác C."""
+        props = (self.specs.get(name, {}).get("parameters") or {}).get("properties") or {}
+        for p, v in clean.items():
+            d = props.get(p)
+            if not (isinstance(d, dict) and d.get("x-ref") and isinstance(v, str)):
+                continue
+            want = str(d["x-ref"]).partition(".")[2]
+            known = self.id_colls.get(v) or set()
+            other = sorted(k for k in known if k != want and k in self.xref_colls)
+            if not known or want in known or not other:
+                continue
+            m = re.search(r"lấy từ ([a-z_0-9]+\.[a-z_0-9]+)", d.get("description") or "")
+            src = f"; lấy {p} từ {m.group(1)}" if m else f"; {p} phải là ID trong {d['x-ref']}"
+            return f"{p}='{v}' là ID của {other[0]}, không phải {want}{src}"
+        return None
+
+    def _ask_schema(self, ask: dict) -> dict | None:
+        """ask_schema: None nếu câu hỏi hợp schema; câu hỏi đã bỏ tham số ngoài schema; hoặc ghi chú thay câu hỏi."""
+        tool, params = ask.get("tool_name"), ask.get("params")
+        spec = self.specs.get(tool) if isinstance(tool, str) else None
+        if not spec or not isinstance(params, list) or not params:
+            return None
+        props = (spec.get("parameters") or {}).get("properties") or {}
+        keep = [p for p in params if p in props]
+        if len(keep) == len(params):
+            return None
+        if keep:
+            return {**ask, "params": keep}
+        if tool in self.schema_asked:  # đã nhắc một lần mà LLM vẫn hỏi: để câu hỏi đi như cũ, tránh vòng lặp
+            return None
+        self.schema_asked.add(tool)
+        req = (spec.get("parameters") or {}).get("required") or []
+        bad = ", ".join(str(p) for p in params)
+        need = f"tham số bắt buộc: {', '.join(req)}" if req else "không có tham số bắt buộc"
+        return {"ok": True, "note": f"{tool} không có tham số {bad} nên không hỏi lại về nó; {need}. Gọi {tool} nếu người "
+                                    "dùng đã nói đủ, hoặc chỉ hỏi tham số bắt buộc còn thiếu"}
 
     def finish(self):
         """Gửi các câu hỏi lại đã hoãn, trừ khi LLM đã tự hỏi về cùng tool. Gọi một lần khi agent xong."""

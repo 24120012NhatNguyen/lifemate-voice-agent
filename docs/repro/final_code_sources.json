@@ -1,0 +1,156 @@
+[
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/build_v2.py",
+    "snapshot": "scripts/build_v2.py",
+    "source_hash": {
+      "sha256": "b09d8bb710d62a9107ff5fdbd2668fb7bdf7effee52c21a4a2df7b9cc1f1db8c",
+      "bytes": 5619,
+      "lines": 126
+    },
+    "snapshot_hash": {
+      "sha256": "b09d8bb710d62a9107ff5fdbd2668fb7bdf7effee52c21a4a2df7b9cc1f1db8c",
+      "bytes": 5619,
+      "lines": 126
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/build_guard_traces.py",
+    "snapshot": "scripts/build_guard_traces.py",
+    "source_hash": {
+      "sha256": "4a615cad14c8832672b2eb770031671b9e021e9646897c3422b5b147a9762f3c",
+      "bytes": 21876,
+      "lines": 412
+    },
+    "snapshot_hash": {
+      "sha256": "f4f22da0ca82e63ae5298eaebff20fc14f1505c905ac8a8b738fc88a9a585f55",
+      "bytes": 21966,
+      "lines": 412
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/build_rename_v2.py",
+    "snapshot": "scripts/build_rename_v2.py",
+    "source_hash": {
+      "sha256": "f0efeb58d5ec1663c4126ff458b4591ba24881b332e843c99ba24de6000d0641",
+      "bytes": 36123,
+      "lines": 600
+    },
+    "snapshot_hash": {
+      "sha256": "4246e1bccb54fbd484d29ae366e0945ed2f03899a91e0555748799f04e708ab6",
+      "bytes": 36099,
+      "lines": 600
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/apps_v3.py",
+    "snapshot": "scripts/synth_v3/apps_v3.py",
+    "source_hash": {
+      "sha256": "38c2bba074ecc58fd1dc26f45c491b3150bc61e615ee6bd128b789ea5c76de6c",
+      "bytes": 53252,
+      "lines": 737
+    },
+    "snapshot_hash": {
+      "sha256": "4c8dbf0c0793b30e42583adba15233c0438994c1d036a9b42404686cc2db4d12",
+      "bytes": 68634,
+      "lines": 1700
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/speech.py",
+    "snapshot": "scripts/synth_v3/speech.py",
+    "source_hash": {
+      "sha256": "55e71ceececb6ae9261ac4724b680d551f63119e3fcaedabf4a3427b781d9c82",
+      "bytes": 9948,
+      "lines": 240
+    },
+    "snapshot_hash": {
+      "sha256": "bb306872318b3540da70dd4d844a9b4605c6aafe13da36283e8b25551d5a480f",
+      "bytes": 10240,
+      "lines": 305
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/gen_v3.py",
+    "snapshot": "scripts/synth_v3/gen_v3.py",
+    "source_hash": {
+      "sha256": "9804965890381c132a803c3f6439e04b59daa34bef6958bce9bd0cbf3d19e6c0",
+      "bytes": 53610,
+      "lines": 1022
+    },
+    "snapshot_hash": {
+      "sha256": "3121d846b61f19381774632bdd44d52652d9df85a6e549c63f0ba9741cbb120e",
+      "bytes": 55685,
+      "lines": 1237
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/check_v3.py",
+    "snapshot": "scripts/synth_v3/check_v3.py",
+    "source_hash": {
+      "sha256": "50b6ab7917d83f09cacdcddb754fd68f5868cdf91e4444d7790a4175abfc2cff",
+      "bytes": 6385,
+      "lines": 112
+    },
+    "snapshot_hash": {
+      "sha256": "f2f76eb8773518c905751c0cd91c5cce6ab16596ad4bdde3ac9d017f36b7b022",
+      "bytes": 6538,
+      "lines": 146
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/finalize_v3.py",
+    "snapshot": "scripts/synth_v3/finalize_v3.py",
+    "source_hash": {
+      "sha256": "609f05abf937ba5c405951714961d4f23bc288d86a71774a972ff6192d3553c5",
+      "bytes": 6053,
+      "lines": 124
+    },
+    "snapshot_hash": {
+      "sha256": "db0251ad39faa1f6cd10e95cd2e23ec125e2771d4161b448be3cc6704dd17e3b",
+      "bytes": 6131,
+      "lines": 159
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-eval/tools-pro/synth_v3/measure_real.py",
+    "snapshot": "scripts/synth_v3/measure_real.py",
+    "source_hash": {
+      "sha256": "27a492af2cbab4581213c318870d5768a355c0c7b939005c2a79a0f738e7876e",
+      "bytes": 3685,
+      "lines": 61
+    },
+    "snapshot_hash": {
+      "sha256": "844db98846d1d1087d3cad08f89cb91fd8f0d6cffb81abfa2290cd029d0ad0f1",
+      "bytes": 3973,
+      "lines": 95
+    }
+  },
+  {
+    "source": "/path/to/workspace/fable-work/lm50/scripts/train_sft_q35r.py",
+    "snapshot": "scripts/train_sft_q35r.py",
+    "source_hash": {
+      "sha256": "faa04cbab7ee11b2108671afe8217b1faaa951b470b5023fc2e8c829b410fa4d",
+      "bytes": 29014,
+      "lines": 483
+    },
+    "snapshot_hash": {
+      "sha256": "faa04cbab7ee11b2108671afe8217b1faaa951b470b5023fc2e8c829b410fa4d",
+      "bytes": 29014,
+      "lines": 483
+    }
+  },
+  {
+    "source": "/path/to/workspace/relay-codex/work/handin-dpo/scripts/merge_scaled.py",
+    "snapshot": "scripts/merge_scaled.py",
+    "source_hash": {
+      "sha256": "f9bc3020449371190828ebebf48397532b372432991fbd4737c8d6c922a1f21c",
+      "bytes": 22272,
+      "lines": 422
+    },
+    "snapshot_hash": {
+      "sha256": "f9bc3020449371190828ebebf48397532b372432991fbd4737c8d6c922a1f21c",
+      "bytes": 22272,
+      "lines": 422
+    }
+  }
+]
