@@ -1,0 +1,231 @@
+# Python packages of the LifeMate image. Three separate environments are installed (see docker/Dockerfile):
+#   /code/.venv          pipeline + ASR (this file; exported from uv.lock with: uv export --frozen --extra asr --no-hashes --no-emit-project)
+#   /code/.venv-vllm     vLLM server: docker/requirements-vllm.txt (vllm 0.33.0, torch cu130)
+#   /code/.venv-jupyter  JupyterLab + kernel: docker/requirements-jupyter.txt
+# Install of this file:  pip install --extra-index-url https://download.pytorch.org/whl/cu128 -r requirements.txt
+accelerate==1.15.0
+    # via lifemate
+annotated-types==0.8.0
+    # via pydantic
+anyio==4.16.0
+    # via
+    #   httpx2
+    #   openai
+av==18.1.0 ; python_full_version < '3.12'
+    # via faster-whisper
+av==19.0.2 ; python_full_version >= '3.12'
+    # via faster-whisper
+certifi==2026.10.23
+    # via requests
+cffi==2.1.1
+    # via soundfile
+charset-normalizer==3.5.2
+    # via requests
+click==8.5.0
+    # via jiwer
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via tqdm
+ctranslate2==4.8.5
+    # via faster-whisper
+cuda-bindings==12.9.10 ; sys_platform == 'linux'
+    # via torch
+cuda-pathfinder==1.8.5 ; sys_platform == 'linux'
+    # via cuda-bindings
+cuda-toolkit==12.8.1 ; sys_platform == 'linux'
+    # via torch
+faster-whisper==1.2.1
+    # via lifemate
+filelock==4.2.7
+    # via
+    #   huggingface-hub
+    #   torch
+    #   transformers
+flatbuffers==25.12.19
+    # via onnxruntime
+fsspec==2026.9.0
+    # via
+    #   huggingface-hub
+    #   torch
+h11==0.16.0 ; sys_platform != 'emscripten'
+    # via httpcore2
+hf-xet==1.8.0 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+    # via huggingface-hub
+httpcore2==2.16.0 ; sys_platform != 'emscripten'
+    # via httpx2
+httpx2==2.16.0
+    # via openai
+httpx2-jsfetch==1.0 ; python_full_version >= '3.12' and sys_platform == 'emscripten'
+    # via httpx2
+huggingface-hub==0.36.2
+    # via
+    #   accelerate
+    #   faster-whisper
+    #   tokenizers
+    #   transformers
+idna==3.20
+    # via
+    #   anyio
+    #   httpx2
+    #   requests
+jinja2==3.1.6
+    # via torch
+jiter==0.18.0
+    # via openai
+jiwer==4.0.0
+    # via lifemate
+markupsafe==3.0.4
+    # via jinja2
+mpmath==1.3.0
+    # via sympy
+networkx==3.6.1 ; python_full_version < '3.12'
+    # via torch
+networkx==3.7 ; python_full_version >= '3.12'
+    # via torch
+numpy==2.4.6 ; python_full_version < '3.12'
+    # via
+    #   accelerate
+    #   ctranslate2
+    #   lifemate
+    #   onnxruntime
+    #   pandas
+    #   soundfile
+    #   transformers
+numpy==2.5.4 ; python_full_version >= '3.12'
+    # via
+    #   accelerate
+    #   ctranslate2
+    #   lifemate
+    #   onnxruntime
+    #   pandas
+    #   soundfile
+    #   transformers
+nvidia-cublas-cu12==12.8.4.1 ; sys_platform == 'linux'
+    # via
+    #   cuda-toolkit
+    #   nvidia-cudnn-cu12
+    #   nvidia-cusolver-cu12
+nvidia-cuda-cupti-cu12==12.8.90 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cuda-nvrtc-cu12==12.8.93 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cuda-runtime-cu12==12.8.90 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cudnn-cu12==9.19.0.56 ; sys_platform == 'linux'
+    # via torch
+nvidia-cufft-cu12==11.3.3.83 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cufile-cu12==1.13.1.3 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-curand-cu12==10.3.9.90 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cusolver-cu12==11.7.3.90 ; sys_platform == 'linux'
+    # via cuda-toolkit
+nvidia-cusparse-cu12==12.5.8.93 ; sys_platform == 'linux'
+    # via
+    #   cuda-toolkit
+    #   nvidia-cusolver-cu12
+nvidia-cusparselt-cu12==0.7.1 ; sys_platform == 'linux'
+    # via torch
+nvidia-nccl-cu12==2.28.9 ; sys_platform == 'linux'
+    # via torch
+nvidia-nvjitlink-cu12==12.8.93 ; sys_platform == 'linux'
+    # via
+    #   cuda-toolkit
+    #   nvidia-cufft-cu12
+    #   nvidia-cusolver-cu12
+    #   nvidia-cusparse-cu12
+nvidia-nvshmem-cu12==3.4.5 ; sys_platform == 'linux'
+    # via torch
+nvidia-nvtx-cu12==12.8.90 ; sys_platform == 'linux'
+    # via cuda-toolkit
+onnxruntime==1.31.1
+    # via faster-whisper
+openai==3.42.1
+    # via lifemate
+packaging==26.3
+    # via
+    #   accelerate
+    #   huggingface-hub
+    #   onnxruntime
+    #   transformers
+pandas==3.1.0
+    # via lifemate
+protobuf==7.36.2
+    # via onnxruntime
+psutil==7.2.2
+    # via accelerate
+pycparser==3.12 ; implementation_name != 'PyPy'
+    # via cffi
+pydantic==2.14.2
+    # via openai
+pydantic-core==2.50.2
+    # via pydantic
+python-dateutil==4.0.0
+    # via pandas
+pyyaml==6.0.3
+    # via
+    #   accelerate
+    #   ctranslate2
+    #   huggingface-hub
+    #   lifemate
+    #   transformers
+rapidfuzz==3.14.6
+    # via jiwer
+regex==2026.9.29
+    # via transformers
+requests==2.34.2
+    # via
+    #   huggingface-hub
+    #   transformers
+safetensors==0.8.0
+    # via
+    #   accelerate
+    #   transformers
+setuptools==81.0.0
+    # via torch
+sniffio==1.3.1
+    # via openai
+soundfile==0.14.0
+    # via lifemate
+sympy==1.14.0
+    # via torch
+tokenizers==0.22.2
+    # via
+    #   faster-whisper
+    #   transformers
+torch==2.11.0+cu128
+    # via
+    #   accelerate
+    #   lifemate
+tqdm==4.70.1
+    # via
+    #   faster-whisper
+    #   huggingface-hub
+    #   transformers
+transformers==4.57.6
+    # via lifemate
+triton==3.6.0 ; sys_platform == 'linux'
+    # via torch
+truststore==0.10.5 ; sys_platform != 'emscripten'
+    # via
+    #   httpcore2
+    #   httpx2
+typing-extensions==4.16.0
+    # via
+    #   anyio
+    #   httpx2
+    #   huggingface-hub
+    #   openai
+    #   pydantic
+    #   pydantic-core
+    #   soundfile
+    #   torch
+    #   typing-inspection
+typing-inspection==0.4.4
+    # via pydantic
+tzdata==2026.6
+    # via
+    #   pandas
+    #   python-dateutil
+urllib3==2.8.0
+    # via requests

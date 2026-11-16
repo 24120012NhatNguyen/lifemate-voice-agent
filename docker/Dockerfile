@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# Image nộp cho vòng private (nấc 6). Dựng bằng scripts/docker_build.sh, chạy tắt mạng:
-#   docker run --rm --gpus all --network none -v <gói dữ liệu>:/data:ro -v <thư mục ra>:/result lifemate:98
+# Image nộp cho vòng private. Dựng bằng scripts/docker_build.sh; BTC chạy đúng lệnh (không mạng):
+#   docker run --gpus '"device=0"' -v <dữ liệu>:/data:ro -v <thư mục ra>:/result IMAGE /bin/bash /code/predict.sh
+# Mã ở /app, /code là liên kết tới /app. Kiểm như BTC: scripts/btc_sim.sh <image.tar.gz>.
 # Hai môi trường Python, đúng như lúc làm bản nộp public, để image ra cùng kết quả:
 #   .venv       pipeline, ASR (torch 2.11 cu128, transformers 4.57.6), ghim bằng uv.lock
 #   .venv-vllm  vLLM 0.33.0 (torch 2.14 cu130), ghim bằng docker/requirements-vllm.txt
@@ -48,10 +49,17 @@ COPY --from=apprank app_rank_train.json models/app_rank_train.json
 ENV LIFEMATE_APP_RANK=/app/models/app_rank_train.json
 
 FROM weights-${VARIANT}
-# Config bản nộp mặc định của image (docker/predict.sh đọc biến CONFIG); đổi lúc dựng bằng --build-arg CONFIG=...
-# (scripts/docker_build.sh: CONFIG=configs/docker-nbest.yaml) hoặc lúc chạy bằng -e CONFIG=...
+# Config bản nộp mặc định của image (predict.py đọc biến CONFIG); đổi lúc dựng bằng --build-arg CONFIG=...
 ARG CONFIG=configs/docker.yaml
 ENV CONFIG=${CONFIG}
+# JupyterLab cho BTC đo thời gian bằng predict_notebook.ipynb (start_jupyter.sh). Venv riêng: không đụng .venv (uv.lock)
+# lẫn .venv-vllm. Lớp này đứng trước mã nên sửa mã không phải cài lại.
+COPY docker/requirements-jupyter.txt docker/
+RUN uv venv --python 3.12.14 .venv-jupyter \
+    && uv pip install --python .venv-jupyter/bin/python -r docker/requirements-jupyter.txt
+ENV PATH=/app/.venv-jupyter/bin:${PATH}
+# Dữ liệu SFT của LLM (build context `trainingdata`, xem training_code/README.md); base model không vào image.
+COPY --from=trainingdata / training_code/data/
 COPY README.md LICENSE ./
 COPY src src
 RUN uv sync --frozen --python 3.12.14 --extra asr
@@ -60,5 +68,15 @@ COPY configs configs
 COPY scripts scripts
 COPY kaggle kaggle
 COPY docker docker
-RUN chmod +x docker/predict.sh scripts/*.sh
-ENTRYPOINT ["/app/docker/predict.sh"]
+COPY training_code training_code
+COPY docs docs
+COPY predict.py predict.sh start_jupyter.sh predict_notebook.ipynb requirements.txt ./
+# BTC đọc mã ở /code: /code là liên kết tới /app (venv và trọng số giữ đúng đường dẫn lúc dựng).
+RUN chmod +x predict.sh start_jupyter.sh docker/predict.sh scripts/*.sh \
+    && ln -s /app /code \
+    && .venv-jupyter/bin/python -c "import json; json.load(open('predict_notebook.ipynb'))"
+WORKDIR /code
+# Không ENTRYPOINT: lệnh chấm `docker run ... IMAGE /bin/bash /code/predict.sh` chạy đúng nguyên văn, `docker run IMAGE`
+# chạy CMD (cùng lệnh), `IMAGE /bin/bash /code/start_jupyter.sh` mở JupyterLab.
+ENTRYPOINT []
+CMD ["/bin/bash", "/code/predict.sh"]

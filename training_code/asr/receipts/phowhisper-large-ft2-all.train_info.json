@@ -1,0 +1,30 @@
+{
+  "base": "vinai/PhoWhisper-large",
+  "args": {
+    "model": "vinai/PhoWhisper-large",
+    "out": "<out>",
+    "epochs": 6,
+    "lr": 0.0002,
+    "rank": 32,
+    "batch_size": 8,
+    "grad_accum": 2,
+    "warmup": 0.1,
+    "seed": 2026,
+    "data": "all",
+    "speed": "0.9,1.0,1.1",
+    "hint": "profile_history_apps",
+    "hint_prob": 0.5,
+    "max_prompt_tokens": 200,
+    "dtype": "float16",
+    "no_merge": true,
+    "save_every_epoch": true,
+    "merge": null,
+    "workers": 2,
+    "limit": 0
+  },
+  "train_utts": 5036,
+  "dev_utts": 0,
+  "dev_wer": {},
+  "dev_wer_hint": {},
+  "best_epoch": 6
+}

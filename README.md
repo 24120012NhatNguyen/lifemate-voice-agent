@@ -1,175 +1,131 @@
-# ZAIC 2026 · LifeMate
+# ZAIC 2026 · LifeMate — team solution
 
-Team solution for the **LifeMate** track of the Zalo AI Challenge 2026: a voice assistant that hears a Vietnamese
-request and answers it by calling tools in the organisers' `zaic_tools` environment. Each sample is scored by the F1 of
-the call list, gated by whether the final environment state (`state_hash`) matches the reference.
+A Vietnamese voice assistant that hears a request (plus the audio of earlier user turns) and answers it by calling
+tools in the organisers' `zaic_tools` environment. Each sample is scored by the F1 of the call list, gated by whether
+the final environment state (`state_hash`) matches the reference.
 
 ```
-audio ──► ASR ──► ASR post-processing ──► agent (LLM, ReAct JSON) ──► guards ──► ToolEnv ──► tool_calls + state_hash
-         PhoWhisper-large (LoRA)                Qwen3-4B (LoRA SFT)
+audio ─► ASR (2 passes) ──────────────────► agent (LLM, ReAct JSON) ─► guards ─► zaic_tools.ToolEnv ─► tool_calls + state_hash
+         PhoWhisper-large base                Qwen3.5-4B (text only)
+         + LoRA "ft-all"  (beam 4, 4-best)    LoRA SFT x 3 seeds, weights averaged (soup)
+         + LoRA "ft2-all" (greedy, name/app prompt)
 ```
 
-Every stage is swappable from a YAML config, so an experiment is one file in `configs/experiments/` and one command.
-The first public submission (config `90_submit_public`, fine-tuned PhoWhisper-large then the SFT agent) scored
-**42.15**, in line with the local validation mean of 42.2.
-
-## Requirements
-
-- Python 3.11 or 3.12 and [uv](https://docs.astral.sh/uv/).
-- An NVIDIA GPU with 16 GB for vLLM, ASR and LoRA training. `pyproject.toml` pins CUDA 12.8 wheels for torch, which
-  RTX 50xx cards need.
-- The organisers' data package (see [Data](#data)). It is licensed to registered teams only: never commit or share it.
-
-## Setup
+## Running the image (what the organisers run)
 
 ```bash
-uv sync --extra asr --extra app --extra dev --extra chunkformer --extra sft --extra train
+docker run --gpus '"device=0"' -v <data>:/data:ro -v <result>:/result IMAGE /bin/bash /code/predict.sh
 ```
 
-```bash
-uv venv --python 3.12 .venv-vllm && uv pip install --python .venv-vllm/bin/python vllm
-```
+- Input: `/data/private_test/` (`private_test.jsonl`, `private_test_tools_catalog.json`, `private_test_environment/`,
+  `audio/<id>/...`, `zaic_tools/`). The split is found automatically (`private_test` when present). The split's own
+  `zaic_tools` is imported for every `ToolEnv` (one per test case); no copy of `zaic_tools` from the image is used.
+- Output: `/result/submission.jsonl` (the folder is created if missing), one line per test case
+  `{"id", "tool_calls", "state_hash", "time"}`, `time` in milliseconds. stdout prints the model-load time and the
+  prediction time (`load model: ... ms`, `predict: N samples, total ... ms, mean ... ms/sample`). Logs, the vLLM log and
+  per-sample traces go to `/result/predict_logs/`.
+- No network is needed: every model (ASR, LLM, tokenizers) is inside the image and HF offline mode is forced.
+- All hyper-parameters are fixed in `configs/docker-final.yaml` and `predict.py`; no argument is needed.
+  `docker run ... IMAGE` without a command runs the same `predict.sh` (the image has no ENTRYPOINT).
+- Timing notebook: `docker run -it --gpus '"device=0"' -p 9777:9777 -v <data>:/data:ro -v <result>:/result IMAGE
+  /bin/bash /code/start_jupyter.sh`, open port 9777, password/token `zac2026`, open `predict_notebook.ipynb`, Run All.
+  It writes `/result/jupyter_submission.jsonl` (same format, with `time`) and logs to `/result/jupyter_logs/`.
 
-```bash
-.venv/bin/python scripts/download_models.py
-```
+### Why the notebook gives the same predictions as `predict.sh`
 
-```bash
-.venv/bin/pre-commit install
-```
+`predict.sh` only runs `predict.py`. The notebook imports the same `predict.py` and calls the same functions in
+separate cells (seed → test cases → ASR → load LLM → agent on every test case → write). Both start the same
+subprocesses with the same config, models, flags and environment (PYTHONHASHSEED=0, HF offline, a fresh ASR cache),
+and decoding is deterministic: ASR beam search/greedy in fp16 over the same batches, LLM temperature 0 and seed 0,
+vLLM serving one sequence at a time (`--max-num-seqs 1`) while the agent runs the test cases one after another.
+Only the measured `time` differs between the two files.
 
-## Data
+### Per-sample time
 
-The data is not in the repository. Put the organisers' package next to it, or point `LIFEMATE_DATA` at it:
+`time` = the test case's ASR seconds (its share of the 32-sample ASR chunk it was transcribed in, both passes, model
+loading excluded) + its agent wall time (from its first LLM call to its final state, `ToolEnv` included). Model loading
+(PhoWhisper, vLLM start-up) is printed separately: the FAQ says it is not counted. A 25-second budget per sample (ASR
+included) stops the agent and keeps the calls already made, so a slow GPU cannot push a sample past 30 seconds.
 
-```
-zalo-ai-2026/
-├── data/lifemate/
-│   ├── train/          train.jsonl, audio/, train_environment/, zaic_tools/
-│   └── public_test/    public_test.jsonl, audio/, public_test_environment/, zaic_tools/
-└── lifemate/           this repository
-```
+## Models
 
-Do not modify `zaic_tools/` or `*_environment/`: the organisers score with the original copies.
+| Part | Model | Parameters (safetensors headers) |
+|---|---|---:|
+| ASR base | `vinai/PhoWhisper-large` (BSD-3-Clause), revision `b9136a44b5f2ca664bd0b8f74baecf1715f6eeeb` | 1,543,304,960 |
+| ASR adapter 1 | LoRA r=32 "ft-all": all 5,036 train utterances, 3 epochs | 57,671,680 |
+| ASR adapter 2 | LoRA r=32 "ft2-all": all train utterances, speed 0.9/1.0/1.1, name/app prompt, 6 epochs | 57,671,680 |
+| LLM | `Qwen/Qwen3.5-4B` (Apache-2.0), text-only export (vision tower and MTP head removed), LoRA SFT merged, 3-seed soup | 4,205,751,296 |
+| **Total** | | **5,864,399,616** (< 6 B) |
 
-## Usage
+- The PhoWhisper-large base ships in the image because inference applies the two LoRA adapters on top of it at load
+  time (its weights are bit-identical to the pinned revision); the Qwen3.5-4B training base is not in the image, only
+  the merged, fine-tuned LLM. How the adapters were trained and extracted: `training_code/README.md`, section 4.
+- ASR: each adapter is added to the fp32 base when it is loaded, then the model is cast to fp16
+  (`src/lifemate/asr/adapters.py`). Pass 1: beam 4, 4-best, batch 2. Pass 2: greedy, batch 16, prompted with the
+  profile/history names and the installed apps' vocabulary (apps rare in train first; ranking in
+  `models/app_rank_train.json`, computed from train only). Pass 2's text joins the alternatives shown to the agent.
+  History turns are transcribed too.
+- LLM: Qwen3.5-4B text-only (`qwen3_5_text`), bf16, served by vLLM 0.33.0 with `--max-model-len 16384` (context 16,384
+  tokens; the longest single call we measured is about 7k prompt tokens) and at most 400 output tokens per step, with the
+  empty-think chat template `prompts/qwen35_scaffold.jinja` (thinking disabled), temperature 0, seed 0.
 
-Run an experiment (results go to `runs/<timestamp>_<config>/`):
+## Agent loop
 
-```bash
-.venv/bin/lifemate run configs/experiments/01_oracle.yaml
-```
+- Prompt (`src/lifemate/context.py`, `prompts/react_json.md`, `prompts/rules/verified.md`): user profile, current time and
+  a two-week calendar table, a compact schema of the installed apps (tool name, read/write, required parameters, `x-ref`
+  ID sources, free-text fields), the conversation history with ASR text for user turns, a ledger of earlier calls and
+  results, the ASR alternatives, and tool-use rules distilled from the train data.
+- Each step the LLM returns one JSON object `{"thought", "action": "call" | "stop", "name", "arguments"}`. Decoding is
+  constrained by a JSON Schema (`action` is call or stop, `name` an installed tool or `sys.ask_missing_info`). The call
+  runs on the real `ToolEnv` and its result is appended; at most 8 steps.
+- Guards (`src/lifemate/guards.py`, `fixes.py`) check every call before it reaches `ToolEnv`: schema validation and type
+  normalisation (numbers, ISO datetimes with timezone), calendar end from a spoken duration, clock and relative-day
+  fixes, spoken money amounts, unknown-ID and duplicate checks, asking for missing information instead of inventing it.
+- A decision layer with fixed confidence thresholds (`agent.decision` in the config) can turn a low-confidence action
+  into a clarifying question or a stop, mainly for apps never seen in train.
 
-Serve the agent LLM for configs that need it (OpenAI-compatible API on port 8000):
+## Data and synthetic data (LLM SFT)
 
-```bash
-DETERMINISTIC=1 MODEL=models/qwen3-4b-sft scripts/serve_vllm.sh
-```
+Training file of the submitted model: `training_code/data/train_full_para_v1_asrfold_val_guard.jsonl`, 6,928 multi-turn
+conversations built exactly like the inference prompts (system and user turns built by the agent above, one assistant
+turn per gold call followed by the tool result from `label.tool_results`, then stop; loss only on assistant turns):
 
-Queue GPU work so several people or worktrees can share one card (`GPU_LOCK` and `GPU_LOG` default to `logs/`):
+| Part | Conversations | How it was made |
+|---|---:|---|
+| Train gold traces | 1,542 | every BTC train sample (3 dropped because a guard flagged their gold call) |
+| Synthetic scenarios | 600 | generated by code from the train tool catalogue (`src/lifemate/synth/`, fixed seeds) |
+| D1 paraphrases | 2,991 | train requests re-phrased by a teacher LLM (Claude family), gold trajectory kept, filtered by an independent teacher solve |
+| ASR-fold copies | 948 | user turns replaced by 5-fold ASR transcripts (each fold's ASR never trained on it), so the agent learns real ASR errors |
+| Validation ASR copies | 480 | the same for the samples once held out for validation |
+| Guard-recovery traces | 367 | traces where a guard note corrects a wrong call (`scripts/build_guard_traces.py`) |
 
-```bash
-SET="limit=100" scripts/gpu_job.sh eval models/qwen3-4b-sft configs/experiments/40_*.yaml
-```
+Only the train split is used to build training data; the public test, including its tool catalogue, is never used.
+Teacher models are named by family only (Claude / GPT / Gemini); the paraphrase set used here was written by Claude.
 
-Build SFT data, train the LoRA agent and merge an adapter trained elsewhere (for example on Kaggle):
+Training recipe (LoRA r=16, α=32, dropout 0, lr 2e-4, 1 epoch, grad-accum 16, max length 12,288, fp16, seeds 0/1/2),
+merging and the 3-seed average: [`training_code/README.md`](training_code/README.md).
 
-```bash
-.venv/bin/python scripts/build_sft.py --out sft/train.jsonl
-```
+## Repository layout (= `/code` in the image)
 
-```bash
-.venv/bin/python scripts/train_sft.py --data sft/train.jsonl --out models/qwen3-4b-sft
-```
+| Path | Content |
+|---|---|
+| `predict.sh`, `predict.py` | entry point and driver (ASR → vLLM → agent → `submission.jsonl`) |
+| `predict_notebook.ipynb`, `start_jupyter.sh` | timing notebook (same driver) and JupyterLab launcher |
+| `configs/docker-final.yaml` | the submitted configuration |
+| `src/lifemate/` | pipeline: ASR, agent, guards, runner |
+| `prompts/` | agent prompt, rules, chat template |
+| `models/` | ASR base + 2 adapters, merged LLM, app ranking (in the image only) |
+| `training_code/` | training code, training data, receipts, how to reproduce |
+| `scripts/` | data builders, ASR fine-tuning, merge/soup, Docker tooling |
+| `requirements.txt` | pipeline/ASR environment; `docker/requirements-vllm.txt` and `docker/requirements-jupyter.txt` for the others |
 
-```bash
-.venv/bin/python scripts/merge_lora.py models/qwen3-4b-sft-drop-lora models/qwen3-4b-sft-drop
-```
+The image has three Python environments: `.venv` (pipeline + ASR: torch 2.11 cu128, transformers 4.57.6, from
+`uv.lock`), `.venv-vllm` (vLLM 0.33.0, torch cu130) and `.venv-jupyter` (JupyterLab 4.4.10, also runs `predict.py`).
+Base image `nvidia/cuda:13.0.3-base-ubuntu24.04` (CUDA 13.0 ≤ 13.2). In the image `/code` is a link to `/app`.
 
-Fine-tune ASR:
+## Developer notes
 
-```bash
-.venv/bin/python scripts/finetune_whisper.py --model vinai/PhoWhisper-large --out models/phowhisper-large-ft
-```
-
-Compare runs, pick the best stage combination and watch running jobs:
-
-```bash
-.venv/bin/streamlit run app/compare.py
-```
-
-Produce and check a submission file:
-
-```bash
-.venv/bin/lifemate run configs/experiments/90_submit_public.yaml
-```
-
-```bash
-.venv/bin/lifemate validate runs/<timestamp>_90_submit_public
-```
-
-Build the offline submission image and run it the way the organisers will (writes `out/submission.jsonl`):
-
-```bash
-scripts/docker_build.sh
-```
-
-```bash
-docker run --rm --gpus all --network none -v ../data/lifemate:/data:ro -v "$PWD/out":/result lifemate:98
-```
-
-Run the tests (data-dependent tests skip when the data package is missing):
-
-```bash
-.venv/bin/pytest -q
-```
-
-## Repository layout
-
-```
-app/          Streamlit app: best architecture, run comparison, live GPU jobs, roadmap, dataset browser
-configs/      base.yaml, docker.yaml (the submission) and one file per experiment (experiments/NN_name.yaml)
-docker/       Dockerfile, offline entrypoint predict.sh, pinned vLLM requirements
-docs/         PROPOSAL.md (architecture), BASELINE.md (how to run, every result), roadmap.yaml
-kaggle/       runner for LoRA SFT on Kaggle T4 x2 notebooks
-prompts/      agent prompt templates and tool-use rules
-scripts/      training, data building, serving, GPU queue and packaging scripts
-src/lifemate/ the package: data, splits, ASR, agent, guards, scoring, runner, CLI
-tests/        pytest suite
-```
-
-Local only, ignored by git:
-
-```
-models/       fine-tuned and merged weights
-runs/         one folder per experiment run (predictions, per-sample traces, metrics)
-cache/        ASR transcripts keyed by ASR config
-sft/          generated SFT datasets and Kaggle packs
-logs/         training and serving logs, GPU.md, gpu.lock
-artifacts/    downloads such as Kaggle outputs
-```
-
-## Competition constraints
-
-- Under 6B parameters in total, under 5B for the LLM, 16K context.
-- 30 seconds per sample on one A30 GPU, offline, inside Docker.
-- One `ToolEnv` per sample; every call counts towards the submission.
-
-## Documentation
-
-The detailed documents are in Vietnamese:
-
-- [docs/PROPOSAL.md](docs/PROPOSAL.md): pipeline architecture and plan.
-- [docs/BASELINE.md](docs/BASELINE.md): installation, running, adding a variant, and every experiment result.
-- [docs/roadmap.yaml](docs/roadmap.yaml): milestones and next proposals (also shown in the app).
-- [docs/METHOD.md](docs/METHOD.md): method description for the organisers.
-- [docs/SUBMISSION.md](docs/SUBMISSION.md): the Docker image, how to run it, and exact commands to rebuild every model.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-Copyright © 2026 the LifeMate team. All rights reserved; see [LICENSE](LICENSE). Third-party models keep their own
-licences, listed in [docs/BASELINE.md](docs/BASELINE.md) section 9.
+Local runs: `uv sync --extra asr`, a vLLM venv from `docker/requirements-vllm.txt`, data under `../data/lifemate` (or
+`LIFEMATE_DATA`), then `.venv/bin/lifemate run configs/<config>.yaml`. Build the image with
+`scripts/docker_swap.sh <merged Qwen3.5 dir> && TAG=<tag> scripts/docker_build.sh`; check it the way the organisers will
+with `scripts/btc_sim.sh <image.tar.gz> [data_dir] [reference.jsonl]`. Licence: see `LICENSE`.

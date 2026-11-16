@@ -1,0 +1,12 @@
+{
+ "sources": [
+  "qwen35-4b-sft-full-guard-s0",
+  "qwen35-4b-sft-full-guard-s1",
+  "qwen35-4b-sft-full-guard-s2"
+ ],
+ "weights": [
+  0.3333333333333333,
+  0.3333333333333333,
+  0.3333333333333333
+ ]
+}

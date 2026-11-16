@@ -1,4 +1,5 @@
-# Build context của docker/Dockerfile là gốc repo; chỉ mã và config vào image, trọng số đi qua build context riêng.
+# Build context của docker/Dockerfile là gốc repo; chỉ mã và config vào image, trọng số và dữ liệu train đi qua build
+# context riêng (scripts/docker_build.sh).
 *
 !pyproject.toml
 !uv.lock
@@ -10,4 +11,14 @@
 !scripts/
 !kaggle/
 !docker/
+!training_code/
+!docs/REPRODUCE_98F_ARCHIVE.md
+!docs/repro/
+!predict.py
+!predict.sh
+!start_jupyter.sh
+!predict_notebook.ipynb
+!requirements.txt
 **/__pycache__
+**/.ipynb_checkpoints
+training_code/data/

@@ -1,0 +1,23 @@
+{
+ "rank": 32,
+ "alpha": 64,
+ "modules": 512,
+ "adapter_params": 57671680,
+ "sigma_next_over_sigma_1_max": 0.0012525911494476495,
+ "residual_abs_max": 0.00043412282269507667,
+ "non_target_tensors_differing_from_base": 0,
+ "examples": [],
+ "train_info": {
+  "base": "vinai/PhoWhisper-large",
+  "train_utts": 5036,
+  "best_epoch": 6
+ },
+ "base_params": 1543304960,
+ "check": {
+  "modules_merged": 512,
+  "elements": 1543304960,
+  "elements_differing": 196549098,
+  "fraction_differing": 0.12735596858316323,
+  "abs_diff_max": 0.000244140625
+ }
+}

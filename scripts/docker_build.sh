@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Dựng ứng viên cuối sau scripts/docker_swap.sh; mặc định CONFIG=configs/docker-final.yaml, TAG=lifemate:final.
+# Đổi model (cùng kiến trúc Qwen3.5-4B đã gộp) = hai lệnh, không sửa tay file nào:
+#   scripts/docker_swap.sh /đường/dẫn/qwen35-4b-soup-XXX && TAG=lifemate:XXX scripts/docker_build.sh
 # Với bản cuối, CPU checker quyết định đúng bốn build context từ receipt; không copy cả models/.
 # Legacy: CONFIG=configs/docker.yaml ASR=... LLM=... TAG=lifemate:98 scripts/docker_build.sh
 # Ghi image id, cỡ và full sha256 trọng số vào artifacts/docker/<tag>.txt.
@@ -37,6 +39,13 @@ if [ "$VARIANT" = full ] || [ "$VARIANT" = full2 ]; then
   args+=(--build-context "asr=$(readlink -f "$ASR")" --build-context "llm=$(readlink -f "$LLM")"
          --build-arg "ASR_DIR=$(basename "$ASR")" --build-arg "LLM_DIR=$(basename "$LLM")")
 fi
+# Dữ liệu SFT của LLM vào /code/training_code/data (BTC: training_code/ phải có dữ liệu train). Thư mục chỉ chứa đúng
+# các file trong training_code/DATA_SHA256SUMS; kiểm hash trước khi dựng.
+TRAINING_DATA=${TRAINING_DATA:-artifacts/btc_training_data}
+(cd "$TRAINING_DATA" && sha256sum --quiet -c "$HERE/training_code/DATA_SHA256SUMS") || { echo "dữ liệu train sai hash: $TRAINING_DATA"; exit 2; }
+extra=$(LC_ALL=C comm -13 <(awk '{print $2}' training_code/DATA_SHA256SUMS | LC_ALL=C sort) <(ls "$TRAINING_DATA" | LC_ALL=C sort))
+[ -z "$extra" ] || { echo "file lạ trong $TRAINING_DATA: $extra"; exit 2; }
+args+=(--build-context "trainingdata=$(readlink -f "$TRAINING_DATA")")
 DOCKER_BUILDKIT=1 docker build "${args[@]}" .
 mkdir -p artifacts/docker
 info=artifacts/docker/${TAG//[:\/]/_}.txt
