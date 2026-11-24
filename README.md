@@ -11,6 +11,19 @@ audio ─► ASR (2 passes) ─────────────────�
          + LoRA "ft2-all" (greedy, name/app prompt)
 ```
 
+## Results
+
+Team **zAIo_Astra**, small-model track (< 6 B parameters).
+
+| Milestone | Public leaderboard score |
+|---|---:|
+| First submission (PhoWhisper-large LoRA + Qwen3-4B SFT agent) | 42.15 |
+| Final model (config 270: Qwen3.5-4B, 3-seed soup with guard-recovery traces) | **72.86** |
+| Output of the submitted Docker image on the public test | 72.83 |
+
+The Docker image was submitted on 16/11/2026 and its private-test predictions were submitted after the private release;
+the final ranking is announced by the organisers.
+
 ## Running the image (what the organisers run)
 
 ```bash
@@ -129,3 +142,9 @@ Local runs: `uv sync --extra asr`, a vLLM venv from `docker/requirements-vllm.tx
 `LIFEMATE_DATA`), then `.venv/bin/lifemate run configs/<config>.yaml`. Build the image with
 `scripts/docker_swap.sh <merged Qwen3.5 dir> && TAG=<tag> scripts/docker_build.sh`; check it the way the organisers will
 with `scripts/btc_sim.sh <image.tar.gz> [data_dir] [reference.jsonl]`. Licence: see `LICENSE`.
+
+## Acknowledgements
+
+This project was built with AI coding assistants (Anthropic Claude, OpenAI Codex and Google Gemini), used under the
+author's direction to write and review code, run experiment pipelines and draft documentation. Design choices,
+experiments and submissions were decided by the author.

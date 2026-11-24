@@ -6,7 +6,7 @@
   "results": [
     {
       "file": "train_synth.jsonl",
-      "reference": "/path/to/workspace/fable-eval/pro-threshold/sft/train_synth.jsonl",
+      "reference": "<workspace>/fable-eval/pro-threshold/sft/train_synth.jsonl",
       "rebuilt_sha256": "b251018b74a93b1a82019d3fd3d3559898bb54f6736122458b34b4ffb939facb",
       "reference_sha256": "b251018b74a93b1a82019d3fd3d3559898bb54f6736122458b34b4ffb939facb",
       "identical_bytes": true,
@@ -15,7 +15,7 @@
     },
     {
       "file": "train_full_para_v1.jsonl",
-      "reference": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1.jsonl",
+      "reference": "<workspace>/fable-eval/pro-threshold/sft/train_full_para_v1.jsonl",
       "rebuilt_sha256": "d8363b21c7124f37af26971999947f1be2df9b581567e9240325bd11737031d4",
       "reference_sha256": "d8363b21c7124f37af26971999947f1be2df9b581567e9240325bd11737031d4",
       "identical_bytes": true,
@@ -24,7 +24,7 @@
     },
     {
       "file": "train_full_para_v1_asrfold.jsonl",
-      "reference": "/path/to/workspace/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold.jsonl",
+      "reference": "<workspace>/fable-eval/pro-threshold/sft/train_full_para_v1_asrfold.jsonl",
       "rebuilt_sha256": "7a42b39bf9f98ffc1efcd65fa846aa02f4ecfc79772c52973ffd076fa4d03c24",
       "reference_sha256": "7a42b39bf9f98ffc1efcd65fa846aa02f4ecfc79772c52973ffd076fa4d03c24",
       "identical_bytes": true,

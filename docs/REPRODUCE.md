@@ -14,7 +14,7 @@ gộp checkpoint `scripts/soup.py` và `scripts/merge_scaled.py`. Nền Qwen3.5 
 môi trường phải đúng receipt của seed đã chọn; không tải dependency mới trong công việc CPU.
 
 ```bash
-export LIFEMATE_DATA=/path/to/workspace/data/lifemate
+export LIFEMATE_DATA=<workspace>/data/lifemate
 export PYTHONPATH="$PWD/src:$PWD/scripts"
 export PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export CUDA_VISIBLE_DEVICES='' OMP_NUM_THREADS=1  # các bước dữ liệu/CPU bên dưới

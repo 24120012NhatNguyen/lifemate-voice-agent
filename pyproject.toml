@@ -51,7 +51,8 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["models", "runs", "cache", "sft", "logs", "artifacts"]
+extend-exclude = ["models", "runs", "cache", "sft", "logs", "artifacts",
+                  "predict_notebook.ipynb"]  # kept byte-identical to the submitted Docker image
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]  # pinned so a ruff upgrade does not change what passes

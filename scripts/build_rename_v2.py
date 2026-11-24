@@ -22,9 +22,9 @@ in place. This builder fixes each of those:
 * copies are added next to the originals (--ratio x input rows by default), originals are never touched;
   only gold-derived rows (train_*, *_valasr) and D1 (teach_p_*) are renamed, synth_* never.
 
-    PYTHONPATH=/path/to/workspace/fable-work/pro-rules/src \
-    LIFEMATE_DATA=/path/to/workspace/data/lifemate \
-    /path/to/workspace/fable-work/pro-rules/.venv/bin/python build_rename_v2.py \
+    PYTHONPATH=<workspace>/fable-work/pro-rules/src \
+    LIFEMATE_DATA=<workspace>/data/lifemate \
+    <workspace>/fable-work/pro-rules/.venv/bin/python build_rename_v2.py \
         --inp ../pro-threshold/sft/train_para_v1_asrfold.jsonl --out ../pro-threshold/sft/train_para_v1_asrfold_ren2.jsonl
 """
 from __future__ import annotations

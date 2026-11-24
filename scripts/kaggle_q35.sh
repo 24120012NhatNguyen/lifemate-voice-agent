@@ -23,7 +23,7 @@
 # DEADLINE (phút, mặc định 640), NO_MERGE=1 (fetch chỉ tải và giải nén, không gộp: dùng cho adapter của smoke).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-ROOT=/path/to/workspace
+ROOT=${ROOT:-$(cd "$HERE/.." && pwd)}   # workspace folder holding this repo, fable-eval/ and fable-work/
 TOOLS_PRO=${TOOLS_PRO:-$ROOT/fable-eval/tools-pro}
 PT=${PT:-$ROOT/fable-eval/pro-threshold}
 KAGGLE_OUT=${KAGGLE_OUT:-$ROOT/fable-eval/kaggle}      # nơi kaggle_fetch.sh ghi (cố định trong script đó)

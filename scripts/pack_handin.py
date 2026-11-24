@@ -9,6 +9,11 @@ import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 
+import os
+
+# Workspace that holds this repo, fable-eval/ and fable-work/ (override with ZAIC_WORKSPACE).
+WORKSPACE = Path(os.environ.get("ZAIC_WORKSPACE", Path(__file__).resolve().parents[2]))
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -93,11 +98,11 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("destination", type=Path)
     p.add_argument("--sft-root", type=Path,
-                   default=Path("/path/to/workspace/fable-eval/pro-threshold/sft"))
+                   default=WORKSPACE / "fable-eval/pro-threshold/sft")
     p.add_argument("--d1-root", type=Path,
-                   default=Path("/path/to/workspace/fable-work/out/LM-41/paraphrase"))
+                   default=WORKSPACE / "fable-work/out/LM-41/paraphrase")
     p.add_argument("--fold-root", type=Path,
-                   default=Path("/path/to/workspace/fable-work/out/LM-51/sft"))
+                   default=WORKSPACE / "fable-work/out/LM-51/sft")
     a = p.parse_args()
     try:
         build(a.destination.expanduser().absolute(), {"sft": a.sft_root, "d1": a.d1_root, "fold": a.fold_root})

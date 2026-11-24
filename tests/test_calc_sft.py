@@ -16,6 +16,17 @@ sft = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sft)
 
 
+def _has_data():
+    try:
+        data.data_root()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+needs_data = pytest.mark.skipif(not _has_data(), reason="không có gói dữ liệu BTC")
+
+
 def agent(enabled):
     cfg = config.load(REPO / "configs/experiments/10_qwen3-4b_gold_react.yaml")
     cfg["agent"]["calc"] = enabled
@@ -44,6 +55,7 @@ def test_disabled_transform_preserves_bytes_without_accessing_data(tmp_path, mon
     assert out.read_bytes() == blob
 
 
+@needs_data
 def test_augmented_gold_replays_and_disabled_trace_is_identical():
     cfg = config.load(REPO / "configs/experiments/10_qwen3-4b_gold_react.yaml")
     off, on = agent(False), agent(True)
@@ -78,6 +90,7 @@ def test_augmented_gold_replays_and_disabled_trace_is_identical():
     assert count == 8
 
 
+@needs_data
 def test_fold_final_uses_stored_top1_and_preserves_nbest():
     sample = data.by_id("train")["train_0028"]
     off, on = agent(False), agent(True)
@@ -92,6 +105,7 @@ def test_fold_final_uses_stored_top1_and_preserves_nbest():
         sft.calc_from_row(changed, on, {}, {})
 
 
+@needs_data
 @pytest.mark.parametrize("provenance", [{"teacher": "paraphrase"}, {"synth": "write"}])
 def test_other_mixture_rows_only_gain_schema(provenance):
     sample = data.by_id("train")["train_0028"]

@@ -51,8 +51,8 @@ giới hạn này; đây không phải chứng minh mọi yếu tố lịch sử
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES= LIFEMATE_DATA=/tmp/lm57-train-only \
-  PYTHONPATH=src /path/to/workspace/fable-eval/pro-threshold/.venv/bin/python -m pytest -q
-/path/to/workspace/fable-eval/pro-threshold/.venv/bin/ruff check .
+  PYTHONPATH=src <workspace>/fable-eval/pro-threshold/.venv/bin/python -m pytest -q
+<workspace>/fable-eval/pro-threshold/.venv/bin/ruff check .
 git diff --check
 bash -n scripts/pack_handin.sh
 ```
